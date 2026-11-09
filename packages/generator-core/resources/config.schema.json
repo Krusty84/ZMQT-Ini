@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "messaging", "socketOptions"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "language"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 63,
+          "pattern": "^[a-z](?:[a-z0-9-]*[a-z0-9])?(?![\\s\\S])"
+        },
+        "language": { "enum": ["python", "cpp", "java", "node"] }
+      }
+    },
+    "messaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pattern", "transport", "bindRole", "bindHost", "connectHost", "port"],
+      "properties": {
+        "pattern": { "enum": ["req-rep", "pub-sub", "push-pull"] },
+        "transport": { "const": "tcp" },
+        "bindRole": { "type": "string" },
+        "bindHost": { "type": "string" },
+        "connectHost": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "socketOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sendHwm", "receiveHwm", "sendTimeoutMs", "receiveTimeoutMs", "lingerMs"],
+      "properties": {
+        "sendHwm": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "receiveHwm": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "sendTimeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
+        "receiveTimeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
+        "lingerMs": { "type": "integer", "minimum": 0, "maximum": 60000 }
+      }
+    }
+  }
+}

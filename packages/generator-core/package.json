@@ -1,0 +1,23 @@
+{
+  "name": "@zmqt-ini/generator-core",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "commonjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "resources"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/compile-schema.cjs",
+    "test": "npm run build && npm run test:types && node --test",
+    "test:types": "tsc -p tests/contract/tsconfig.json"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "typescript": "5.9.3"
+  }
+}
