@@ -2,18 +2,29 @@
 
 ## Overview
 
-`@zmqt-ini/generator-core` is a synchronous Node.js library. It turns a project configuration into an in-memory manifest and a list of files. The CLI writes those files. The generated applications open ZeroMQ sockets when they run.
+ZMQT-Ini is a project initializer for ZeroMQ applications, not a messaging server or broker. Its goal is to turn a declarative JSON configuration into a small, runnable, understandable project with correct ZeroMQ topology, socket lifecycle, message handling, dependencies, tests, and documentation. Generated code must remain usable and editable without ZMQT-Ini.
+The long-term goal is one reusable generation engine with multiple independent clients: a CLI (already present), a possible VS Code extension, and a possible Web application/API. New clients must not duplicate the rules for ZeroMQ or the code-generation logic.
+
+The independent TypeScript/Node.js package @zmqt-ini/generator-core implements the business logic. It supports Python, C++, Java, and Node.js; REQ/REP, PUB/SUB, and PUSH/PULL; TCP; two applications with one Bind and one Connect, and single-frame UTF-8 JSON messages. Generated projects include runtime configuration, pinned dependencies, build instructions, tests, and a README.
+
+The public API is getCapabilities(), validateConfig(), inspectProject(), and generateProject(). Calls are synchronous. Core returns diagnostics and an in-memory GeneratedProject (manifest plus virtual files), it does not write files, create ZIP archives, start processes, make network calls, or depend on UI frameworks. Those operations belong to clients/hosts.
+
+The generation pipeline is:
+
+JSON config → validation and capabilities → topology and lifecycle → behavior IR → IR validation → language adapter → output validation → GeneratedProject
+
+Pattern definitions own ZeroMQ behavior, language adapters translate validated operations into language-specific code. A new pattern should not require changes to existing adapters unless it introduces new IR operations.
 
 ## Repository structure
 
-| Location | Responsibility |
-| --- | --- |
-| [packages/generator-core](packages/generator-core) | Public API, configuration checks, planning, code generation, and output validation. |
-| [apps/cli](apps/cli) | Reads a UTF-8 JSON configuration and calls the package API. It writes to a new directory and attempts to remove its output if a write fails. |
-| [scripts](scripts) | Bash and PowerShell entry points. `setup` installs Core build dependencies and builds the package. `generate` passes the input and output paths to the CLI. |
-| [config.json](config.json) | Example CLI input for Python REQ/REP over loopback TCP. |
-| [tests/generated-project-ci](tests/generated-project-ci) | Builds and runs generated applications over loopback TCP. |
-| [tests/host-parity](tests/host-parity) | Compares the direct API, the CLI, and an in-process Web test host. |
+| Location                                                 | Responsibility                                                                                                                                              |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [packages/generator-core](packages/generator-core)       | Public API, configuration checks, planning, code generation, and output validation.                                                                         |
+| [apps/cli](apps/cli)                                     | Reads a UTF-8 JSON configuration and calls the package API. It writes to a new directory and attempts to remove its output if a write fails.                |
+| [scripts](scripts)                                       | Bash and PowerShell entry points. `setup` installs Core build dependencies and builds the package. `generate` passes the input and output paths to the CLI. |
+| [config.json](config.json)                               | Example CLI input for Python REQ/REP over loopback TCP.                                                                                                     |
+| [tests/generated-project-ci](tests/generated-project-ci) | Builds and runs generated applications over loopback TCP.                                                                                                   |
+| [tests/host-parity](tests/host-parity)                   | Compares the direct API, the CLI, and an in-process Web test host.                                                                                          |
 
 ## Data flow
 
