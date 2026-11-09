@@ -1,0 +1,195 @@
+name: Generator Core CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  NODE_VERSION: '26.13.0'
+
+jobs:
+  core-validation:
+    name: Core Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        id: checkout
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        id: setup_node
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Core dependencies
+        id: install_core
+        working-directory: packages/generator-core
+        run: |
+          {
+            printf 'Node.js '
+            node --version
+            printf 'npm '
+            npm --version
+          } | tee "$RUNNER_TEMP/core-tools.log"
+          npm ci
+
+      - name: Run Core tests
+        id: core_tests
+        working-directory: packages/generator-core
+        run: NODE_OPTIONS=--test-reporter=tap npm test 2>&1 | tee "$RUNNER_TEMP/core-tests.tap"
+
+      - name: Run Host Parity tests
+        id: host_parity
+        run: node --test --test-reporter=tap tests/host-parity/parity.test.cjs 2>&1 | tee "$RUNNER_TEMP/host-parity.tap"
+
+      - name: Write Core Validation summary
+        if: ${{ !cancelled() }}
+        env:
+          RESULT: ${{ job.status }}
+          PARITY_RESULT: ${{ steps.host_parity.outcome || 'skipped' }}
+          STEPS: ${{ toJSON(steps) }}
+        run: |
+          {
+            echo '### Generator Core v1.1'
+            echo
+            echo "- Core Validation — $RESULT"
+            echo "- Host Parity — $PARITY_RESULT"
+            if [[ "$RESULT" == failure ]]; then
+              echo '- Generated Projects Integration — skipped because Core Validation failed (0 / 24 run).'
+              printf '\nFailed steps and tests. See the job log for diagnostics.\n\n'
+              jq -r 'to_entries[] | select(.value.outcome == "failure") | "- \(.key)"' <<< "$STEPS"
+              for log in "$RUNNER_TEMP"/{core-tests,host-parity}.tap; do
+                if [[ -f "$log" ]]; then
+                  sed -nE 's/^not ok [0-9]+ - /- /p' "$log"
+                fi
+              done
+            fi
+            if [[ -s "$RUNNER_TEMP/core-tools.log" ]]; then
+              printf '\n~~~\n'
+              cat "$RUNNER_TEMP/core-tools.log"
+              printf '~~~\n'
+            fi
+            printf '\nThe p95 result on Ubuntu does not verify the performance requirement for macOS 27.0.1 arm64 (§16.3).\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  generated-projects:
+    name: Generated Projects Integration
+    needs: core-validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        id: checkout
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        id: setup_node
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        id: setup_python
+        with:
+          python-version: '3.15.2'
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        id: setup_java
+        with:
+          distribution: oracle
+          java-version: '27.0.1'
+
+      - name: Install PyZMQ
+        id: install_pyzmq
+        run: python3 -m pip install pyzmq==27.3.0
+
+      - name: Check integration tools
+        id: check_tools
+        run: |
+          {
+            trap 'echo "::error::Tool check failed: $BASH_COMMAND"' ERR
+            printf 'Node.js '
+            node --version
+            printf 'npm '
+            npm --version
+            python3 --version
+            python3 -c 'import zmq; print(f"PyZMQ {zmq.__version__}")'
+            javac -version
+            mvn --version | sed -n '1p'
+            cmake_version=$(cmake --version | awk 'NR == 1 { print $3 }')
+            echo "CMake $cmake_version (minimum 3.24)"
+            dpkg --compare-versions "$cmake_version" ge 3.24
+            c++ --version | sed -n '1p'
+            echo 'static_assert(__cplusplus > 202002L);' | c++ -std=c++23 -fsyntax-only -x c++ -
+          } 2>&1 | tee "$RUNNER_TEMP/integration-tools.log"
+
+      - name: Build Core
+        id: build_core
+        working-directory: packages/generator-core
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run generated project tests
+        id: integration_tests
+        run: |
+          status=0
+          log="$RUNNER_TEMP/integration-tests.tap"
+          node --test --test-reporter=tap \
+            tests/generated-project-ci/python.test.cjs \
+            tests/generated-project-ci/other-adapters.test.cjs 2>&1 | tee "$log" || status=$?
+          # Count distinct completed configurations. Skips and extra tests do not match.
+          passed=$(awk '
+            /^ok [0-9]+ - generated (Python|cpp|java|node) (req-rep, (req|rep)|pub-sub, (pub|sub)|push-pull, (push|pull)) binds$/ {
+              sub(/^ok [0-9]+ - /, "")
+              if (!seen[$0]++) count++
+            }
+            END { print count + 0 }
+          ' "$log")
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+          if [[ "$passed" != 24 ]]; then
+            echo "::error::Expected 24 passing integration configurations, found $passed."
+            exit 1
+          fi
+          exit "$status"
+
+      - name: Write Generated Projects Integration summary
+        if: ${{ !cancelled() }}
+        env:
+          RESULT: ${{ job.status }}
+          PASSED: ${{ steps.integration_tests.outputs.passed || '0' }}
+          STEPS: ${{ toJSON(steps) }}
+        run: |
+          {
+            echo '### Generated Projects Integration'
+            echo
+            echo "- Result — $RESULT"
+            echo "- Configurations passed — $PASSED / 24"
+            if [[ "$RESULT" == failure ]]; then
+              printf '\nFailed steps and tests. See the job log for diagnostics.\n\n'
+              jq -r 'to_entries[] | select(.value.outcome == "failure") | "- \(.key)"' <<< "$STEPS"
+              if [[ -f "$RUNNER_TEMP/integration-tests.tap" ]]; then
+                if [[ "$PASSED" != 24 ]]; then
+                  echo '- The integration suite did not pass all 24 configurations.'
+                fi
+                sed -nE 's/^not ok [0-9]+ - /- /p' "$RUNNER_TEMP/integration-tests.tap"
+              fi
+            fi
+            if [[ -s "$RUNNER_TEMP/integration-tools.log" ]]; then
+              printf '\n~~~\n'
+              cat "$RUNNER_TEMP/integration-tools.log"
+              printf '~~~\n'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
