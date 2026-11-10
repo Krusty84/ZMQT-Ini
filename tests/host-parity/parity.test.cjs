@@ -12,6 +12,7 @@ const {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } = require("node:fs");
@@ -27,21 +28,25 @@ const {
 const cli = resolve(__dirname, "../../apps/cli/index.cjs");
 
 function setup(t, config) {
-  const cwd = mkdtempSync(join(tmpdir(), "zmqt-parity-"));
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), "zmqt-parity-")));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const input = join(cwd, "input.json");
   writeFileSync(input, JSON.stringify(config));
   return { cwd, input, output: join(cwd, "output") };
 }
 
-function runCli({ cwd, input, output }, execArgs = []) {
+function runCli(cwd, args, execArgs = []) {
   const result = spawnSync(
     process.execPath,
-    [...execArgs, cli, input, output],
+    [...execArgs, cli, ...args],
     { cwd, encoding: "utf8", timeout: 5_000 },
   );
   assert.ifError(result.error);
   return result;
+}
+
+function runJsonCli({ cwd, input, output }, execArgs) {
+  return runCli(cwd, ["--json", input, output], execArgs);
 }
 
 async function webHost(request) {
@@ -94,7 +99,7 @@ for (const { id: language } of core.getCapabilities().languages) {
       assert.equal(direct.ok, true, JSON.stringify(direct.diagnostics));
 
       const workspace = setup(t, config);
-      const local = runCli(workspace);
+      const local = runJsonCli(workspace);
       assert.equal(local.status, 0, local.stderr);
       assert.equal(local.stderr, "");
       const { manifest, files } = direct.value;
@@ -118,20 +123,101 @@ for (const { id: language } of core.getCapabilities().languages) {
   }
 }
 
+test("CLI prints a text summary with the absolute output path", (t) => {
+  const { cwd, input } = setup(t, projectConfig("python", "req-rep", "rep"));
+  const directory = "new project";
+  const output = join(cwd, directory);
+  const result = runCli(cwd, [input, directory]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    result.stdout,
+    `Generated project (python, req-rep) in ${JSON.stringify(output)}.\n`,
+  );
+  assert.equal(result.stderr, "");
+  assert.ok(existsSync(join(output, "README.md")));
+});
+
+test("CLI prints warnings to stderr and still creates the project", (t) => {
+  const config = projectConfig("cpp", "req-rep", "rep", ["0.0.0.0", "localhost"]);
+  const { cwd, input, output } = setup(t, config);
+  const result = runCli(cwd, [input, output]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    result.stdout,
+    `Generated project (cpp, req-rep) in ${JSON.stringify(output)}.\n`,
+  );
+  assert.equal(
+    result.stderr,
+    "Warning [/messaging/bindHost] Binding outside loopback exposes unencrypted traffic.\n",
+  );
+  assert.ok(existsSync(join(output, "README.md")));
+});
+
+test("CLI reports usage in the selected format when paths are missing", (t) => {
+  const { cwd, output } = setup(t, {});
+  const result = runCli(cwd, []);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, "");
+  assert.equal(
+    result.stderr,
+    "Usage: node apps/cli/index.cjs [--json] CONFIG_JSON NEW_OUTPUT_DIR\n",
+  );
+
+  const json = runCli(cwd, ["--json"]);
+  assert.equal(json.status, 1, json.stderr);
+  assert.equal(json.stdout, "");
+  assert.deepEqual(JSON.parse(json.stderr), {
+    diagnostics: [
+      {
+        code: "CLI_USAGE",
+        severity: "error",
+        path: "",
+        message: "Usage: node apps/cli/index.cjs CONFIG_JSON NEW_OUTPUT_DIR",
+      },
+    ],
+  });
+  assert.equal(existsSync(output), false);
+});
+
+test("CLI reports invalid JSON without creating output", (t) => {
+  const { cwd, input, output } = setup(t, {});
+  writeFileSync(input, "{");
+  const result = runCli(cwd, [input, output]);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, "");
+  assert.equal(
+    result.stderr,
+    "Error The configuration must be valid UTF-8 JSON.\n",
+  );
+  assert.equal(existsSync(output), false);
+});
+
 test("invalid configuration yields the same diagnostics without creating output", async (t) => {
   const config = projectConfig("python", "req-rep", "rep");
   config.messaging.port = 0;
+  config.project["extra\nfield"] = true;
   config.socketOptions.lingerMs = "10";
   const direct = core.generateProject(config);
   assert.equal(direct.ok, false);
 
   const workspace = setup(t, config);
-  const local = runCli(workspace);
+  const local = runJsonCli(workspace);
   assert.equal(local.status, 1, local.stderr);
   assert.equal(local.stdout, "");
   assert.deepEqual(JSON.parse(local.stderr), {
     diagnostics: direct.diagnostics,
   });
+  assert.equal(existsSync(workspace.output), false);
+
+  const text = runCli(workspace.cwd, [workspace.input, workspace.output]);
+  assert.equal(text.status, 1, text.stderr);
+  assert.equal(text.stdout, "");
+  assert.equal(
+    text.stderr,
+    "Error [/messaging/port] Value is below the minimum. (min=1)\n" +
+      "Error [/project/extra\\nfield] Unknown field.\n" +
+      "Error [/socketOptions/lingerMs] Invalid field type. (expected=integer)\n",
+  );
   assert.equal(existsSync(workspace.output), false);
 
   const response = await runWeb(config);
@@ -147,7 +233,7 @@ test("CLI preserves an existing destination", (t) => {
   });
   const before = diskFiles(workspace.output);
 
-  const result = runCli(workspace);
+  const result = runJsonCli(workspace);
   assert.equal(result.status, 1, result.stderr);
   assert.equal(result.stdout, "");
   assert.ok(
@@ -181,7 +267,7 @@ test("CLI rolls back files after a partial write failure", (t) => {
   );
   const before = diskFiles(workspace.cwd);
 
-  const result = runCli(workspace, ["--require", preload]);
+  const result = runJsonCli(workspace, ["--require", preload]);
   assert.equal(result.status, 1, result.stderr);
   assert.equal(result.stdout, "");
   assert.ok(

@@ -19,13 +19,16 @@ const requireCore = createRequire(
   join(__dirname, "../../packages/generator-core/package.json"),
 );
 
-function reject(diagnostics) {
-  process.stderr.write(`${JSON.stringify({ diagnostics })}\n`);
-  process.exitCode = 1;
-}
-
-function fail(code, message) {
-  reject([{ code, severity: "error", path: "", message }]);
+function writeTextDiagnostics(diagnostics) {
+  for (const { severity, path, message, params } of diagnostics) {
+    const level = severity === "error" ? "Error" : "Warning";
+    const location = path ? ` [${JSON.stringify(path).slice(1, -1)}]` : "";
+    const details = Object.entries(params ?? {})
+      .map(([key, value]) => `${key}=${value}`)
+      .join(", ");
+    const suffix = details ? ` (${details})` : "";
+    process.stderr.write(`${level}${location} ${message}${suffix}\n`);
+  }
 }
 
 function removeCreated(paths, remove) {
@@ -41,13 +44,36 @@ function removeCreated(paths, remove) {
 }
 
 function main(args) {
-  if (args.length !== 2) {
-    return fail(
-      "CLI_USAGE",
-      "Usage: node apps/cli/index.cjs CONFIG_JSON NEW_OUTPUT_DIR",
-    );
+  const json = args[0] === "--json";
+  const paths = json ? args.slice(1) : args;
+
+  function reject(diagnostics) {
+    if (json) {
+      process.stderr.write(`${JSON.stringify({ diagnostics })}\n`);
+    } else {
+      writeTextDiagnostics(diagnostics);
+    }
+    process.exitCode = 1;
   }
-  const [configPath, outputPath] = args;
+
+  function fail(code, message) {
+    reject([{ code, severity: "error", path: "", message }]);
+  }
+
+  if (paths.length !== 2) {
+    if (json) {
+      return fail(
+        "CLI_USAGE",
+        "Usage: node apps/cli/index.cjs CONFIG_JSON NEW_OUTPUT_DIR",
+      );
+    }
+    process.stderr.write(
+      "Usage: node apps/cli/index.cjs [--json] CONFIG_JSON NEW_OUTPUT_DIR\n",
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const [configPath, outputPath] = paths;
   const output = resolve(outputPath);
 
   let bytes;
@@ -138,9 +164,16 @@ function main(args) {
         : "Could not write the complete project or remove every artifact created by this command.",
     );
   }
-  process.stdout.write(
-    `${JSON.stringify({ manifest, diagnostics: result.diagnostics })}\n`,
-  );
+  if (json) {
+    process.stdout.write(
+      `${JSON.stringify({ manifest, diagnostics: result.diagnostics })}\n`,
+    );
+  } else {
+    writeTextDiagnostics(result.diagnostics);
+    process.stdout.write(
+      `Generated project (${manifest.language}, ${manifest.pattern}) in ${JSON.stringify(output)}.\n`,
+    );
+  }
 }
 
 main(process.argv.slice(2));

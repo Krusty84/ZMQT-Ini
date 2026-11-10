@@ -20,11 +20,11 @@ Pattern definitions own ZeroMQ behavior, language adapters translate validated o
 | Location                                                 | Responsibility                                                                                                                                              |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [packages/generator-core](packages/generator-core)       | Public API, configuration checks, planning, code generation, and output validation.                                                                         |
-| [apps/cli](apps/cli)                                     | Reads a UTF-8 JSON configuration and calls the package API. It writes to a new directory and attempts to remove its output if a write fails.                |
-| [scripts](scripts)                                       | Bash and PowerShell entry points. `setup` installs Core build dependencies and builds the package. `generate` passes the input and output paths to the CLI. |
+| [apps/cli](apps/cli/index.cjs)                            | Reads a UTF-8 JSON configuration and calls the package API. It writes to a new directory and attempts to remove its output if a write fails.                |
+| [scripts](scripts)                                       | Bash and PowerShell entry points. `setup` installs Core build dependencies and builds the package. `generate` forwards its arguments to the CLI.             |
 | [config.json](config.json)                               | Example CLI input for Python REQ/REP over loopback TCP.                                                                                                     |
 | [tests/generated-project-ci](tests/generated-project-ci) | Builds and runs generated applications over loopback TCP.                                                                                                   |
-| [tests/host-parity](tests/host-parity)                   | Compares the direct API, the CLI, and an in-process Web test host.                                                                                          |
+| [tests/host-parity](tests/host-parity)                     | Compares results from Core, the CLI in JSON mode, and an in-process Web test host. It also checks CLI files and text output.                                 |
 
 ## Data flow
 
@@ -38,6 +38,7 @@ Pattern definitions own ZeroMQ behavior, language adapters translate validated o
 
 - The [package entry point](packages/generator-core/src/index.ts) exports four operations and their result types. The plan, behavior graphs, and adapter interfaces are internal.
 - Planning owns the roles and behavior. Adapters render the checked plan in the target language. The same plan supplies the topology summary and the generated files.
+- The CLI formats Core results. By default, it writes a project summary to `stdout` and diagnostics to `stderr`. With `--json` before the paths, it writes `{manifest, diagnostics}` to `stdout` on success and `{diagnostics}` to `stderr` on failure. Both modes return `0` on success and `1` on failure.
 
 ## Generated runtime
 

@@ -4,7 +4,7 @@
 
 set -eu
 
-required_node=v26.13.0
+required_node=v26.0.0
 if ! command -v node >/dev/null 2>&1; then
   printf 'Node.js %s is required in PATH.\n' "${required_node#v}" >&2
   exit 1

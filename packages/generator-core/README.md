@@ -61,4 +61,4 @@ node apps/cli/index.cjs config.json output-directory
 node --test tests/host-parity/parity.test.cjs
 ```
 
-The CLI prints the manifest and diagnostics as JSON. The host parity test compares the files and metadata returned by direct API use, the CLI, and a Web API test host.
+The CLI prints a text summary by default. Scripts that parse JSON must pass `--json` before the configuration and output paths. The host parity test uses `--json` to compare the files and metadata from the CLI, direct API use, and a Web API test host.

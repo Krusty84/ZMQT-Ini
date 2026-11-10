@@ -18,6 +18,8 @@ bash scripts/setup.sh
 bash scripts/generate.sh ./config.json ./out
 ```
 
-Use a UTF-8 JSON configuration that follows the [configuration schema](packages/generator-core/resources/config.schema.json). Choose a new output directory with an existing parent. Relative input and output paths use your current directory. The CLI prints the manifest and diagnostics as JSON.
+Use a UTF-8 JSON configuration that follows the [configuration schema](packages/generator-core/resources/config.schema.json). Choose a new output directory with an existing parent. Relative input and output paths use your current directory.
+
+The CLI prints a project summary to standard output and sends errors and warnings to standard error. Scripts that parse JSON must pass `--json` before the configuration and output paths.
 
 Follow the generated project's README to install its dependencies and run it.
