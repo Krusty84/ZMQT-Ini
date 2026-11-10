@@ -210,11 +210,15 @@ export function validateArtifacts(
   const expected = new Map<string, boolean>(
     [
       "README.md",
+      "build.ps1",
       runtime.path,
+      "run.ps1",
       "tests/integration_test.py",
       ...layout.supportFiles,
     ].map((path) => [path, false]),
   );
+  expected.set("build.sh", true);
+  expected.set("run.sh", true);
   for (const { role } of plan.applications)
     expected.set(layout.entryPoint(role), layout.executableEntries);
 

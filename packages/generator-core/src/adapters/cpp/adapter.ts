@@ -9,6 +9,7 @@ import { renderCppBuild } from "../../templates/cpp/build";
 import { cppCodec, cppCodecHeader } from "../../templates/cpp/codec";
 import { cppRuntime, cppRuntimeHeader } from "../../templates/cpp/runtime";
 import { renderIntegrationTest } from "../../templates/shared/integration";
+import { renderScripts, scriptUsage } from "../../templates/shared/scripts";
 import type { LanguageAdapter } from "../types";
 import { renderCppApplication } from "./behavior";
 
@@ -16,7 +17,7 @@ const entryPoint = (role: string) => `app_${role}.cpp`;
 
 export const cppAdapter: LanguageAdapter = {
   id: "cpp",
-  templateVersion: "1.0.0",
+  templateVersion: "1.1.0",
   dependencySetVersion: "1.0.0",
   layout: {
     entryPoint,
@@ -57,6 +58,14 @@ export const cppAdapter: LanguageAdapter = {
           plan.applications.map(({ role }) => role),
         ),
       ),
+      ...renderScripts(plan, {
+        build: [
+          "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+          "cmake --build build",
+        ],
+        run: ({ role }) => `./build/app_${role}`,
+        windows: "wsl",
+      }),
     ];
   },
   generateRuntimeConfig(plan) {
@@ -87,7 +96,11 @@ export const cppAdapter: LanguageAdapter = {
       "README.md",
       `# ${plan.project.name}
 
-This project runs the ${plan.project.pattern} pattern over TCP. Build it on a POSIX system with a C++23 compiler and CMake 3.24 or later. CMake can fetch the pinned dependency releases during configuration.
+This project runs the ${plan.project.pattern} pattern over TCP. Use a C++23 compiler and CMake 3.24 or later. CMake can fetch the pinned dependency releases during configuration.
+
+On Windows, install these tools in the default WSL distribution. The PowerShell scripts build and run the project in WSL.
+
+${scriptUsage}
 
 \`\`\`sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

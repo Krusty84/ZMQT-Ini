@@ -12,6 +12,7 @@ import { javaJarPath, renderPom } from "../../templates/java/build";
 import { javaCodec } from "../../templates/java/codec";
 import { javaRuntime } from "../../templates/java/runtime";
 import { renderIntegrationTest } from "../../templates/shared/integration";
+import { renderScripts, scriptUsage } from "../../templates/shared/scripts";
 import type { LanguageAdapter } from "../types";
 import { renderJavaApplication } from "./behavior";
 
@@ -24,7 +25,7 @@ const entryPoint = (role: string) =>
 
 export const javaAdapter: LanguageAdapter = {
   id: "java",
-  templateVersion: "1.0.0",
+  templateVersion: "1.1.0",
   dependencySetVersion: "1.0.0",
   layout: {
     entryPoint,
@@ -55,6 +56,15 @@ export const javaAdapter: LanguageAdapter = {
         "pom.xml",
         renderPom(plan.project.name, javaRelease, jeromq.version),
       ),
+      ...renderScripts(plan, {
+        build: ["mvn -B -q package"],
+        run: ({ socketType }) => `java -cp ${javaJarPath} App${socketType}`,
+        windows: {
+          build: ["mvn.cmd -B -q package"],
+          executable: "'java.exe'",
+          args: ({ socketType }) => `-cp ${javaJarPath} App${socketType}`,
+        },
+      }),
     ];
   },
   generateRuntimeConfig(plan) {
@@ -90,7 +100,9 @@ export const javaAdapter: LanguageAdapter = {
 
 This project runs the ${plan.project.pattern} pattern over TCP using JDK ${javaVersion} and Maven 3.9.
 
-Build from the project directory with JDK ${javaVersion} on your PATH and as JAVA_HOME.
+Put the JDK and Maven on PATH. Set JAVA_HOME to the JDK directory.
+
+${scriptUsage}
 
 \`\`\`sh
 mvn -B -q package

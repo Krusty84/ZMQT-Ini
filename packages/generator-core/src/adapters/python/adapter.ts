@@ -11,6 +11,7 @@ import {
 import { pythonCodec } from "../../templates/python/codec";
 import { pythonRuntime } from "../../templates/python/runtime";
 import { renderIntegrationTest } from "../../templates/shared/integration";
+import { renderScripts, scriptUsage } from "../../templates/shared/scripts";
 import type { LanguageAdapter } from "../types";
 import { renderPythonApplication } from "./behavior";
 
@@ -21,7 +22,7 @@ const entryPoint = (role: string) => `app_${role}.py`;
 
 export const pythonAdapter: LanguageAdapter = {
   id: "python",
-  templateVersion: "1.0.0",
+  templateVersion: "1.1.0",
   dependencySetVersion: "1.0.0",
   layout: {
     entryPoint,
@@ -48,6 +49,21 @@ export const pythonAdapter: LanguageAdapter = {
         "requirements.txt",
         `${plan.dependencies.map(({ id, version }) => `${id}==${version}`).join("\n")}\n`,
       ),
+      ...renderScripts(plan, {
+        build: [
+          "python3 -m venv .venv",
+          ".venv/bin/python -m pip install -r requirements.txt",
+        ],
+        run: ({ role }) => `.venv/bin/python ${entryPoint(role)}`,
+        windows: {
+          build: [
+            "python.exe -m venv .venv",
+            ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt",
+          ],
+          executable: "Join-Path $PSScriptRoot '.venv\\Scripts\\python.exe'",
+          args: ({ role }) => entryPoint(role),
+        },
+      }),
     ];
   },
   generateRuntimeConfig(plan) {
@@ -79,6 +95,10 @@ export const pythonAdapter: LanguageAdapter = {
       `# ${plan.project.name}
 
 This project runs the ${plan.project.pattern} pattern over TCP using Python ${pythonVersion}.
+
+Put \`python3\` on PATH on macOS or Linux. On Windows, put \`python.exe\` on PATH.
+
+${scriptUsage}
 
 Install the dependencies in a virtual environment.
 

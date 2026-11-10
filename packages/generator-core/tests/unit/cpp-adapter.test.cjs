@@ -45,9 +45,13 @@ test("C++ emits two virtual entry points, runtime config, and pinned C++23 build
     "README.md",
     "app_pub.cpp",
     "app_sub.cpp",
+    "build.ps1",
+    "build.sh",
     "config/zmq.json",
     "message_codec.cpp",
     "message_codec.hpp",
+    "run.ps1",
+    "run.sh",
     "tests/integration_test.py",
     "zmqt_runtime.cpp",
     "zmqt_runtime.hpp",
@@ -60,6 +64,9 @@ test("C++ emits two virtual entry points, runtime config, and pinned C++23 build
     [...cmake.matchAll(/URL_HASH SHA256=[0-9a-f]{64}\b/g)].length,
     3,
   );
+  for (const script of ["build", "run"]) {
+    assert.ok(files[`${script}.ps1`].includes(`wsl.exe --cd "$PSScriptRoot" --exec bash ./${script}.sh`));
+  }
 
   assert.match(files["app_pub.cpp"], /zmq::socket_type::pub, true/);
   assert.match(files["app_sub.cpp"], /zmq::socket_type::sub, false/);

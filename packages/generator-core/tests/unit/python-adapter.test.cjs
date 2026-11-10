@@ -47,16 +47,20 @@ test("Python artifacts are complete, virtual, and reproducible", () => {
       "README.md",
       "app_rep.py",
       "app_req.py",
+      "build.ps1",
+      "build.sh",
       "config/zmq.json",
       "message_codec.py",
       "requirements.txt",
+      "run.ps1",
+      "run.sh",
       "tests/integration_test.py",
       "zmqt_runtime.py",
     ],
   );
   assert.deepEqual(
     files.filter(({ executable }) => executable).map(({ path }) => path),
-    ["app_rep.py", "app_req.py"],
+    ["app_rep.py", "app_req.py", "build.sh", "run.sh"],
   );
   assert.equal(
     files.find(({ path }) => path === "requirements.txt").content,

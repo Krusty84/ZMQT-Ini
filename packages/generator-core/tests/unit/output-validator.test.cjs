@@ -118,6 +118,23 @@ test("Output Validator rejects the wrong pattern in the integration test", () =>
   );
 });
 
+test("Output Validator requires the launch scripts and their executable modes", () => {
+  const plan = projectPlan(pythonAdapter);
+  const files = pythonAdapter.generateBuildFiles(plan);
+  const result = assembleProject(plan, {
+    ...pythonAdapter,
+    generateBuildFiles: () => files
+      .filter(({ path }) => path !== "run.ps1")
+      .map((file) => file.path === "build.sh" ? { ...file, executable: false } : file),
+  });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.diagnostics.map(({ code }) => code), [
+    "MISSING_ARTIFACT",
+    "INVALID_ARTIFACT_MODE",
+  ]);
+  assert.deepEqual(result.diagnostics[0].params, { path: "run.ps1" });
+});
+
 const dependencyChanges = [
   ["Python requirement", pythonAdapter, "requirements.txt", "pyzmq==VERSION"],
   ["Node manifest", nodeAdapter, "package.json", '"zeromq": "VERSION"'],

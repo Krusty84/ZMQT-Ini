@@ -17,22 +17,22 @@ Pattern definitions own ZeroMQ behavior, language adapters translate validated o
 
 ## Repository structure
 
-| Location                                                 | Responsibility                                                                                                                                              |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [packages/generator-core](packages/generator-core)       | Public API, configuration checks, planning, code generation, and output validation.                                                                         |
-| [apps/cli](apps/cli/index.cjs)                            | Reads a UTF-8 JSON configuration and calls the package API. It writes to a new directory and attempts to remove its output if a write fails.                |
-| [scripts](scripts)                                       | Bash and PowerShell entry points. `setup` installs Core build dependencies and builds the package. `generate` forwards its arguments to the CLI.             |
-| [config.json](config.json)                               | Example CLI input for Python REQ/REP over loopback TCP.                                                                                                     |
-| [tests/generated-project-ci](tests/generated-project-ci) | Builds and runs generated applications over loopback TCP.                                                                                                   |
-| [tests/host-parity](tests/host-parity)                     | Compares results from Core, the CLI in JSON mode, and an in-process Web test host. It also checks CLI files and text output.                                 |
+| Location                                                 | Responsibility                                                                                                                                                           |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [packages/generator-core](packages/generator-core)       | Public API, configuration checks, planning, code generation, and output validation.                                                                                      |
+| [apps/cli](apps/cli/index.cjs)                           | Reads UTF-8 JSON and calls Core. It writes to a new directory, sets file modes from the `executable` flags, and attempts to remove partial output after a write failure. |
+| [scripts](scripts)                                       | Bash and PowerShell entry points. `setup` installs Core build dependencies and builds the package. `generate` forwards its arguments to the CLI.                         |
+| [config.json](config.json)                               | Example CLI input for Python REQ/REP over loopback TCP.                                                                                                                  |
+| [tests/generated-project-ci](tests/generated-project-ci) | Builds and runs generated applications over loopback TCP.                                                                                                                |
+| [tests/host-parity](tests/host-parity)                   | Compares results from Core, the CLI in JSON mode, and an in-process Web test host. It also checks CLI files and text output.                                             |
 
 ## Data flow
 
 1. [validateConfig](packages/generator-core/src/validation/config.ts) copies input data, checks it against the [JSON Schema](packages/generator-core/resources/config.schema.json), and checks addresses, roles, and socket options. [getCapabilities](packages/generator-core/src/catalog/capabilities.ts) describes the supported combinations and versions.
 2. The [planner](packages/generator-core/src/planning/build.ts) uses the [pattern registry](packages/generator-core/src/patterns/registry.ts) and [topology compiler](packages/generator-core/src/topology/compiler.ts) to assign one Bind role and one Connect role. Each role gets a socket type, an endpoint, and applicable options. The planner adds a lifecycle and a behavior graph for each application.
 3. The [IR validator](packages/generator-core/src/planning/validate.ts) checks the `GenerationPlan`. Its [behavior checks](packages/generator-core/src/planning/validate-behavior.ts) cover transitions, variable use, shutdown paths, and socket operation order. [inspectProject](packages/generator-core/src/public/inspect.ts) returns a topology summary from the checked plan.
-4. [generateProject](packages/generator-core/src/public/generate.ts) selects a built-in [language adapter](packages/generator-core/src/adapters). The [assembler](packages/generator-core/src/artifacts/assemble.ts) checks the plan against that adapter's capabilities before emission. Adapters turn behavior graphs into state-machine code and add runtime code, a codec, build files, tests, and a README.
-5. The assembler normalizes line endings, sorts the file paths, and runs the [Output Validator](packages/generator-core/src/artifacts/validate.ts). The validator checks the layout, runtime configuration, source markers, dependency declarations, and size. On success, the assembler returns `GeneratedProject`.
+4. [generateProject](packages/generator-core/src/public/generate.ts) selects a built-in [language adapter](packages/generator-core/src/adapters). The [assembler](packages/generator-core/src/artifacts/assemble.ts) checks the plan against the adapter's capabilities. The adapter renders behavior graphs as state machines and emits runtime code, codecs, build files, scripts, tests, and the README.
+5. The assembler normalizes line endings, sorts paths, and runs the [Output Validator](packages/generator-core/src/artifacts/validate.ts). The validator checks required paths, executable flags, runtime configuration, source markers, dependency declarations, and size.
 
 ## Key design decisions
 
@@ -42,7 +42,13 @@ Pattern definitions own ZeroMQ behavior, language adapters translate validated o
 
 ## Generated runtime
 
-Each project has two applications for REQ/REP, PUB/SUB, or PUSH/PULL over TCP. Both read `config/zmq.json` for hosts, the port, and socket options. The [runtime templates](packages/generator-core/src/templates) handle DNS, socket setup, message exchange, and cleanup. The codecs use single-frame UTF-8 JSON. The `READY` event reports local socket setup. The integration runner checks delivery through a received response, event, or task result.
+The two applications use REQ/REP, PUB/SUB, or PUSH/PULL over TCP. Both read `config/zmq.json` for hosts, the port, and socket options. The [runtime templates](packages/generator-core/src/templates) handle DNS, socket setup, message exchange, and cleanup. The codecs use single-frame UTF-8 JSON. `READY` reports local socket setup. The integration runner checks delivery through a response, event, or task result.
+
+### Generated project scripts
+
+Adapters supply build and launch commands to the [shared script template](packages/generator-core/src/templates/shared/scripts.ts). It emits `build.sh`, `run.sh`, `build.ps1`, and `run.ps1`. Each script runs from the generated project root.
+
+The run script starts the Bind app first. The Bind app must report `READY` on its first stdout line within 10 seconds. The script then starts the Connect app on the same host. When either app exits or the user presses Ctrl+C, the script stops the remaining process. It returns a nonzero status on startup or application failure.
 
 ## Dependencies and validation
 
@@ -50,9 +56,10 @@ TypeScript builds the package. A [build script](packages/generator-core/scripts/
 
 The `generate` scripts require the Core build. Relative input and output paths use the caller's working directory. See the [repository README](README.md) for setup and launch commands.
 
-The [CI workflow](.github/workflows/generator-core-ci.yml) runs package and host tests first. It then builds and runs 24 generated configurations, with two Bind orientations for each language and pattern. Golden tests compare output hashes. Architecture tests check the installed package in a restricted Node.js process. See the [package README](packages/generator-core/README.md) for commands and toolchain versions.
+The [CI workflow](.github/workflows/generator-core-ci.yml) runs Core and host-parity tests on Linux. [Launcher tests](packages/generator-core/tests/unit/scripts.test.cjs) use test apps to check startup order, exit status, and cleanup. The integration job builds and runs 24 generated configurations, with two Bind orientations for each language and pattern. Golden tests compare output hashes. Architecture tests check the installed package in a restricted Node.js process. See the [package README](packages/generator-core/README.md) for commands and toolchain versions.
 
 ## Known constraints
 
 - Output checks use static markers. Integration tests compile and run the applications. The validator checks primary library versions from the plan and toolchain versions from the catalog where build files declare them. Build templates pin the other dependencies.
-- Generated C++ applications target POSIX. Generated Java applications use `sun.misc.Signal` for shutdown on the pinned JDK.
+- Generated C++ applications target POSIX. Their PowerShell scripts call Bash in the default WSL distribution.
+- Generated Java applications use `sun.misc.Signal` for shutdown on the pinned JDK.

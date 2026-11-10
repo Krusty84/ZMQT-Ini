@@ -11,6 +11,7 @@ import {
 import { nodeCodec } from "../../templates/node/codec";
 import { nodeRuntime } from "../../templates/node/runtime";
 import { renderIntegrationTest } from "../../templates/shared/integration";
+import { renderScripts, scriptUsage } from "../../templates/shared/scripts";
 import type { LanguageAdapter } from "../types";
 import { renderNodeApplication } from "./behavior";
 
@@ -51,7 +52,7 @@ const lockedModules = {
 
 export const nodeAdapter: LanguageAdapter = {
   id: "node",
-  templateVersion: "1.0.0",
+  templateVersion: "1.1.0",
   dependencySetVersion: "1.0.0",
   layout: {
     entryPoint,
@@ -107,6 +108,15 @@ export const nodeAdapter: LanguageAdapter = {
         "package-lock.json",
         `${JSON.stringify(packageLock, null, 2)}\n`,
       ),
+      ...renderScripts(plan, {
+        build: ["npm ci"],
+        run: ({ role }) => `node ${entryPoint(role)}`,
+        windows: {
+          build: ["npm.cmd ci"],
+          executable: "'node.exe'",
+          args: ({ role }) => entryPoint(role),
+        },
+      }),
     ];
   },
   generateRuntimeConfig(plan) {
@@ -142,6 +152,10 @@ export const nodeAdapter: LanguageAdapter = {
       `# ${plan.project.name}
 
 This project runs the ${plan.project.pattern} pattern over TCP using Node.js ${nodeVersion}.
+
+Put Node.js and npm on PATH.
+
+${scriptUsage}
 
 Install the dependencies with \`npm ci\`.
 
