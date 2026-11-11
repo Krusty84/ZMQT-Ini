@@ -56,6 +56,7 @@ export const cppAdapter: LanguageAdapter = {
           plan.project.name,
           cppzmqVersion,
           plan.applications.map(({ role }) => role),
+          plan.irVersion === "1.1",
         ),
       ),
       ...renderScripts(plan, {

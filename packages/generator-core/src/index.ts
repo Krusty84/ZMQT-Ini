@@ -9,6 +9,8 @@ export { inspectProject } from "./public/inspect";
 export { validateConfig } from "./validation/config";
 export type {
   CapabilityCatalog,
+  AdvancedConfig,
+  BasicConfig,
   CoreResult,
   Diagnostic,
   DiagnosticSeverity,
@@ -17,5 +19,6 @@ export type {
   GenerationManifest,
   NormalizedConfig,
   ProjectSummary,
+  PubSubExtension,
   ValidationResult,
 } from "./public/types";

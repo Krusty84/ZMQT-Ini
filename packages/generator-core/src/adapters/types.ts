@@ -5,6 +5,7 @@
 
 import type { GeneratedFile, NormalizedConfig } from "../public/types";
 import type { GenerationPlan, LanguageCapabilities } from "../planning/ir";
+import type { ProjectPlan } from "../planning/pub-sub";
 
 export interface ArtifactLayout {
   entryPoint(role: string): string;
@@ -19,7 +20,7 @@ export interface LanguageAdapter {
   readonly layout: ArtifactLayout;
   capabilities(): LanguageCapabilities;
   generate(plan: GenerationPlan): readonly GeneratedFile[];
-  generateBuildFiles(plan: GenerationPlan): readonly GeneratedFile[];
+  generateBuildFiles(plan: ProjectPlan): readonly GeneratedFile[];
   generateRuntimeConfig(plan: GenerationPlan): readonly GeneratedFile[];
   generateTests(plan: GenerationPlan): readonly GeneratedFile[];
   generateReadme(plan: GenerationPlan): GeneratedFile;

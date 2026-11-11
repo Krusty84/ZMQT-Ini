@@ -5,6 +5,7 @@
 
 import schema from "../../resources/config.schema.json";
 import { patternRegistry } from "../patterns/registry";
+import { extensionCombinations } from "../patterns/pub-sub-extensions";
 import type { LanguageCapabilities } from "../planning/ir";
 import type { CapabilityCatalog } from "../public/types";
 
@@ -77,6 +78,12 @@ export function getCapabilities(): CapabilityCatalog {
       bindRoles: [...permittedBindRoles],
     })),
     transports: ["tcp"],
+    pubSubExtensions: {
+      configSchemaVersion: "1.1",
+      irVersion: "1.1",
+      languages: languages.map(({ id }) => id),
+      combinations: extensionCombinations(),
+    },
     socketOptionRanges: Object.fromEntries(
       Object.entries(schema.properties.socketOptions.properties).map(
         ([option, { minimum, maximum }]) => [

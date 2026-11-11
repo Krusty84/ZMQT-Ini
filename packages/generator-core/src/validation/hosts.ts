@@ -45,6 +45,14 @@ function parseIpv6(host: string): number[] | undefined {
   ];
 }
 
+export function sameHost(first: string, second: string): boolean {
+  if (first.toLowerCase().replace(/\.$/, "") === second.toLowerCase().replace(/\.$/, "")) return true;
+  if (!first.includes(":") || !second.includes(":")) return false;
+  const left = parseIpv6(first);
+  const right = parseIpv6(second);
+  return left !== undefined && right !== undefined && left.every((group, index) => group === right[index]);
+}
+
 function classifyIpv4(
   firstOctet: number,
   allZero: boolean,

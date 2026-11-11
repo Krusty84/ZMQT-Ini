@@ -129,7 +129,7 @@ test("rejects missing and unknown fields, unsupported IDs, and numeric strings",
   }
   rejects({ ...config(), extra: true }, "UNKNOWN_FIELD", "/extra");
   rejects(
-    { ...config(), schemaVersion: "1.1" },
+    { ...config(), schemaVersion: "1.2" },
     "UNSUPPORTED_SCHEMA_VERSION",
     "/schemaVersion",
   );

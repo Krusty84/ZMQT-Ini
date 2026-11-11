@@ -165,11 +165,26 @@ jobs:
           fi
           exit "$status"
 
+      - name: Run advanced PUB/SUB project tests
+        id: advanced_pub_sub
+        run: |
+          status=0
+          log="$RUNNER_TEMP/advanced-pub-sub.tap"
+          node --test --test-reporter=tap tests/advanced-pub-sub-ci/patterns.test.cjs 2>&1 | tee "$log" || status=$?
+          passed=$(awk '/^ok [0-9]+ - generated (python|cpp|java|node) advanced / && !/# SKIP/ { count++ } END { print count + 0 }' "$log")
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+          if [[ "$passed" != 36 ]]; then
+            echo "::error::Expected 36 passing advanced PUB/SUB configurations, found $passed."
+            exit 1
+          fi
+          exit "$status"
+
       - name: Write Generated Projects Integration summary
         if: ${{ !cancelled() }}
         env:
           RESULT: ${{ job.status }}
           PASSED: ${{ steps.integration_tests.outputs.passed || '0' }}
+          ADVANCED: ${{ steps.advanced_pub_sub.outputs.passed || '0' }}
           STEPS: ${{ toJSON(steps) }}
         run: |
           {
@@ -177,6 +192,7 @@ jobs:
             echo
             echo "- Result — $RESULT"
             echo "- Configurations passed — $PASSED / 24"
+            echo "- Advanced PUB/SUB configurations passed — $ADVANCED / 36"
             if [[ "$RESULT" == failure ]]; then
               printf '\nFailed steps and tests. See the job log for diagnostics.\n\n'
               jq -r 'to_entries[] | select(.value.outcome == "failure") | "- \(.key)"' <<< "$STEPS"
@@ -185,6 +201,9 @@ jobs:
                   echo '- The integration suite did not pass all 24 configurations.'
                 fi
                 sed -nE 's/^not ok [0-9]+ - /- /p' "$RUNNER_TEMP/integration-tests.tap"
+              fi
+              if [[ -f "$RUNNER_TEMP/advanced-pub-sub.tap" ]]; then
+                sed -nE 's/^not ok [0-9]+ - /- /p' "$RUNNER_TEMP/advanced-pub-sub.tap"
               fi
             fi
             if [[ -s "$RUNNER_TEMP/integration-tools.log" ]]; then

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "messaging", "socketOptions"],
+  "properties": {
+    "schemaVersion": { "const": "1.1" },
+    "project": { "$ref": "config.schema.json#/properties/project" },
+    "socketOptions": { "$ref": "config.schema.json#/properties/socketOptions" },
+    "messaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pattern", "transport", "bindRole", "bindHost", "connectHost", "port", "extensions"],
+      "properties": {
+        "pattern": { "const": "pub-sub" },
+        "transport": { "const": "tcp" },
+        "bindRole": { "type": "string" },
+        "bindHost": { "type": "string" },
+        "connectHost": { "type": "string" },
+        "port": { "$ref": "config.schema.json#/properties/messaging/properties/port" },
+        "extensions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["espresso", "last-value-caching", "suicidal-snail", "black-box", "clone", "binary-star"]
+          }
+        },
+        "maxAgeMs": { "$ref": "config.schema.json#/properties/socketOptions/properties/receiveTimeoutMs" },
+        "subtree": { "type": "string" },
+        "backup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bindHost", "connectHost", "port"],
+          "properties": {
+            "bindHost": { "type": "string" },
+            "connectHost": { "type": "string" },
+            "port": { "$ref": "config.schema.json#/properties/messaging/properties/port" }
+          }
+        }
+      }
+    }
+  }
+}

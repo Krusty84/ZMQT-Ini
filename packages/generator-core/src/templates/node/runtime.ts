@@ -3,19 +3,23 @@
  * SPDX-License-Identifier: MIT
  */
 
-export const nodeRuntime = String.raw`import { lookup } from "node:dns/promises";
+const imports = String.raw`import { lookup } from "node:dns/promises";
 import { readFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import { setImmediate, setTimeout } from "node:timers/promises";
 import zmq from "zeromq";
 import { decode } from "./message_codec.mjs";
 
-const pollSliceMs = 50;
+`;
+
+const singleSocketTypes = String.raw`const pollSliceMs = 50;
 const constructors = {
   REQ: zmq.Request, REP: zmq.Reply, PUB: zmq.Publisher,
   SUB: zmq.Subscriber, PUSH: zmq.Push, PULL: zmq.Pull,
 };
-const options = {
+`;
+
+const validation = String.raw`const options = {
   sendHwm: ["sendHighWaterMark", 1, 1000000],
   receiveHwm: ["receiveHighWaterMark", 1, 1000000],
   sendTimeoutMs: ["sendTimeout", 1, 600000],
@@ -50,7 +54,9 @@ function boundedInt(value, minimum, maximum) {
   return Number.isInteger(value) && minimum <= value && value <= maximum;
 }
 
-async function loadConfig() {
+`;
+
+const singleSocketConfig = String.raw`async function loadConfig() {
   const args = process.argv.slice(2);
   if (args.length !== 0 && (args.length !== 2 || args[0] !== "--config")) {
     throw new Error("Expected --config PATH");
@@ -69,7 +75,9 @@ async function loadConfig() {
   return config;
 }
 
-async function addresses(host) {
+`;
+
+const endpoints = String.raw`async function addresses(host) {
   if (host === "*" || isIP(host)) return [host];
   const records = await lookup(host, { all: true, order: "ipv4first" });
   if (records.length === 0) throw new Error("No usable address");
@@ -94,7 +102,9 @@ async function bind(socket, host, port) {
   throw new Error("Could not bind any address");
 }
 
-class Runtime {
+`;
+
+const singleSocketRuntime = String.raw`class Runtime {
   stopping = false;
   runId = process.env.ZMQT_TEST_RUN_ID || null;
   sequence = 0;
@@ -206,3 +216,16 @@ export async function run(socketType, mode, activeOptions, subscription, behavio
   return result;
 }
 `;
+
+export const nodeRuntime =
+  imports +
+  singleSocketTypes +
+  validation +
+  singleSocketConfig +
+  endpoints +
+  singleSocketRuntime;
+
+export const nodeAdvancedBase =
+  imports +
+  validation +
+  endpoints;

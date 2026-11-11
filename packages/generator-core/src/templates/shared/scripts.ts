@@ -4,17 +4,18 @@
  */
 
 import { textFile } from "../../artifacts/files";
-import type { ApplicationPlan, GenerationPlan } from "../../planning/ir";
+import type { ProjectPlan } from "../../planning/pub-sub";
+import { advancedBashRun, advancedPowerShellRun } from "./advanced-launch";
 
 interface ScriptCommands {
   readonly build: readonly string[];
-  run(app: ApplicationPlan): string;
+  run(app: { role: string }): string;
   readonly windows:
     | "wsl"
     | {
         readonly build: readonly string[];
         readonly executable: string;
-        args(app: ApplicationPlan): string;
+        args(app: { role: string }): string;
       };
 }
 
@@ -190,7 +191,21 @@ exit $LASTEXITCODE
 `;
 }
 
-export function renderScripts(plan: GenerationPlan, commands: ScriptCommands) {
+export function renderScripts(plan: ProjectPlan, commands: ScriptCommands) {
+  if (plan.irVersion === "1.1") {
+    const { windows } = commands;
+    const binaryStar = plan.messaging.extensions.includes("binary-star");
+    const apps = plan.applications.map((app) => [app.role, commands.run(app)] as const);
+    return [
+      textFile("build.sh", `${bashHeader}\n${commands.build.join("\n")}\n`, true),
+      textFile("run.sh", advancedBashRun(bashHeader, apps, binaryStar), true),
+      textFile("build.ps1", windows === "wsl" ? wslScript("build.sh") : powerShellBuild(windows.build)),
+      textFile("run.ps1", windows === "wsl" ? wslScript("run.sh") : advancedPowerShellRun(
+        powerShellHeader, windows.executable,
+        plan.applications.map((app) => windows.args(app)), binaryStar,
+      )),
+    ];
+  }
   const bind = plan.applications.find(({ endpoint }) => endpoint.mode === "bind")!;
   const connect = plan.applications.find(({ endpoint }) => endpoint.mode === "connect")!;
   const { windows } = commands;

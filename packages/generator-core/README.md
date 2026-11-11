@@ -16,11 +16,24 @@ if (result.ok) {
 
 `getCapabilities()` returns the supported languages, patterns, bind roles, transports, and socket option ranges. `validateConfig(input)` takes a JSON data object and returns `ValidationResult`. The `ok` discriminator indicates whether `value` is available. `diagnostics` is present in both cases.
 
-`inspectProject(input)` returns the checked project name, language, pattern, and two roles with socket types, modes, and endpoints.
+`inspectProject(input)` returns the checked project name, language, pattern, and socket endpoints. For schema 1.1, it also returns the selected extensions and the socket name for each endpoint.
 
 `generateProject(input)` returns a versioned `manifest` and sorted `files`. The files have relative POSIX paths, UTF-8 text, and an `executable` flag for the host. The Core validates its internal plan before emission and checks the final paths, required files, and aggregate limit of 2,097,152 UTF-8 bytes.
 
-The package includes [JSON Schema v1.0](resources/config.schema.json). Every field is required. The limit is 32,768 UTF-8 bytes of compact JSON. Supply IPv4, bare IPv6, or a DNS name without a port. Bind also accepts `*`. Connect requires a destination address.
+The package includes [JSON Schema v1.0](resources/config.schema.json) for basic patterns. The limit is 32,768 UTF-8 bytes of compact JSON. Supply IPv4, bare IPv6, or a DNS name without a port. Bind also accepts `*`. Connect requires a destination address.
+
+## Advanced PUB/SUB
+
+Use [JSON Schema v1.1](resources/config-1.1.schema.json) with `pattern: "pub-sub"` and a nonempty `messaging.extensions` array. `getCapabilities().pubSubExtensions` lists the supported combinations and bind roles. Generation records the selection in `manifest.extensions`.
+
+| Selection | Bind role | Ports and options |
+| --- | --- | --- |
+| Espresso or Last Value Caching, with any other stream extension | `proxy` | `P` for publishers, `P+1` for subscribers |
+| Suicidal Snail or Black Box on a direct stream | `pub` or `sub` | `P`; `maxAgeMs` sets the Snail limit and defaults to 1000 ms |
+| Clone | `server` | `P` for snapshots, `P+1` for updates, `P+2` for client writes |
+| Clone with Binary Star | `server` | The three Clone ports and `P+3` for server coordination at each endpoint |
+
+Clone accepts a `messaging.subtree` prefix such as `/stocks/`. The default empty prefix selects the whole map. For Binary Star, supply `messaging.backup` with `bindHost`, `connectHost`, and `port`. Use disjoint four-port ranges when both servers run on one host. Clone's client sockets use [12/CHP](https://rfc.zeromq.org/spec/12/).
 
 Use diagnostic `code`, `path`, and `params` for machine handling. `path` is a JSON Pointer. The empty pointer denotes the root. Diagnostics sort by `path`, then by `code`. Warnings permit a successful result.
 
@@ -33,6 +46,7 @@ Use diagnostic `code`, `path`, and `params` for machine handling. `path` is a JS
 | `VALUE_BELOW_MINIMUM`, `VALUE_ABOVE_MAXIMUM` | `min` or `max` |
 | `INPUT_TOO_LARGE` | `maxBytes` |
 | `INVALID_BIND_ROLE`, `INVALID_HOST`, `UNSPECIFIED_CONNECT_HOST` | `pattern` for `INVALID_BIND_ROLE` |
+| `MISSING_EXTENSION`, `TOO_MANY_EXTENSIONS`, `UNSUPPORTED_EXTENSION`, `DUPLICATE_EXTENSION`, `INCOMPATIBLE_EXTENSIONS`, `INACTIVE_EXTENSION_OPTION`, `INVALID_SUBTREE`, `PORT_RANGE_OVERFLOW`, `OVERLAPPING_PORT_RANGES` | |
 | `UNENCRYPTED_EXTERNAL_BIND`, `PUB_SUB_MESSAGE_LOSS`, `ZERO_LINGER`, `INACTIVE_SOCKET_OPTION` | `role` for `INACTIVE_SOCKET_OPTION` |
 
 The catalog uses stable releases available on 9 November 2026. Generated-project compatibility is tested with the corresponding adapter.
@@ -50,6 +64,7 @@ Run the generated-project integration matrix from the repository root after buil
 
 ```sh
 node --test tests/generated-project-ci/*.test.cjs
+node --test tests/advanced-pub-sub-ci/*.test.cjs
 ```
 
 The matrix uses the versions in the catalog, a C++23 compiler, CMake, and Maven. Set `ZMQT_PYTHON` to the Python interpreter with pinned PyZMQ, `ZMQT_NODE` to the Node.js executable, and `ZMQT_JAVA_HOME` to the JDK if they are outside the default PATH. The runner builds projects in temporary directories and uses loopback TCP. Golden and concurrent generation tests run through `npm test`. The p95 reference is macOS 27.0.1 arm64 with Node.js 26.13.0.

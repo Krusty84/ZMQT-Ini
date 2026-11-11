@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { NormalizedConfig } from "../public/types";
+import type { BasicConfig } from "../public/types";
 
 export interface SchemaIssue {
   keyword: string;
@@ -13,7 +13,7 @@ export interface SchemaIssue {
 }
 
 declare const validate: {
-  (input: unknown): input is NormalizedConfig;
+  (input: unknown): input is BasicConfig;
   errors?: readonly SchemaIssue[] | null;
 };
 

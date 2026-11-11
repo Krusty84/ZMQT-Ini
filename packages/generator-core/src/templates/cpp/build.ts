@@ -7,6 +7,7 @@ export function renderCppBuild(
   name: string,
   cppzmqVersion: string,
   roles: readonly string[],
+  workers = false,
 ): string {
   const targets = roles.map((role) => `app_${role}`);
   return `cmake_minimum_required(VERSION 3.24)
@@ -53,7 +54,7 @@ if(TARGET libzmq-static)
 else()
   target_link_libraries(zmqt_runtime PUBLIC cppzmq nlohmann_json::nlohmann_json)
 endif()
-
+${workers ? "find_package(Threads REQUIRED)\ntarget_link_libraries(zmqt_runtime PUBLIC Threads::Threads)\n" : ""}
 ${targets.map((target) => `add_executable(${target} ${target}.cpp)\ntarget_link_libraries(${target} PRIVATE zmqt_runtime)`).join("\n")}
 set_target_properties(zmqt_runtime ${targets.join(" ")} PROPERTIES
   CXX_STANDARD 23

@@ -7,7 +7,7 @@ const assert = require("node:assert/strict");
 const { spawn, spawnSync } = require("node:child_process");
 const { once } = require("node:events");
 const {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync,
+  existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync,
 } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { delimiter, dirname, join } = require("node:path");
@@ -168,4 +168,23 @@ test("Bash run stops both apps on SIGINT even if one ignores SIGTERM", { skip: w
   assert.equal(signal, null);
   assert.equal(status, 130, output);
   assertStopped(project.root, "bind", "connect");
+});
+
+test("advanced Bash run cleans up when FIFO creation fails before any app starts", { skip: windows }, (t) => {
+  const project = fixture(t, "rep", "", "");
+  const config = structuredClone(projectCases.find(({ project }) => project.name === "node-pub-sub-pub"));
+  config.schemaVersion = "1.1";
+  config.messaging.bindRole = "proxy";
+  config.messaging.extensions = ["espresso"];
+  const result = generateProject(config);
+  assert.equal(result.ok, true);
+  const script = result.value.files.find(({ path }) => path === "run.sh").content;
+  writeFileSync(join(project.root, "run.sh"), script, { mode: 0o755 });
+  writeFileSync(join(project.cwd, "mkfifo"), "#!/bin/sh\nexit 23\n", { mode: 0o755 });
+  project.env.TMPDIR = project.cwd;
+  const runResult = run(project, "run");
+  assert.ifError(runResult.error);
+  assert.equal(runResult.status, 23, runResult.stderr);
+  assert.equal(runResult.stderr, "");
+  assert.deepEqual(readdirSync(project.cwd).sort(), ["generated project", "mkfifo"]);
 });

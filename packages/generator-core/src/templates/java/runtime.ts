@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-export const javaRuntime = String.raw`import java.io.IOException;
+const imports = String.raw`import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
@@ -25,23 +25,35 @@ import sun.misc.Signal;
 import tools.jackson.databind.JsonNode;
 
 final class ZmqtRuntime {
-    private static final long SLICE_NS = TimeUnit.MILLISECONDS.toNanos(50);
-    private static final Set<String> CONFIG_FIELDS = Set.of("bindHost", "connectHost", "port", "socketOptions");
+`;
+
+const pollSlice = String.raw`    private static final long SLICE_NS = TimeUnit.MILLISECONDS.toNanos(50);
+`;
+
+const configFields = String.raw`    private static final Set<String> CONFIG_FIELDS = Set.of("bindHost", "connectHost", "port", "socketOptions");
     private static final Map<String, Integer> MAXIMUMS = Map.of(
         "sendHwm", 1_000_000, "receiveHwm", 1_000_000,
         "sendTimeoutMs", 600_000, "receiveTimeoutMs", 600_000, "lingerMs", 60_000
     );
     private static final String IPV4 = "(?:0|[1-9][0-9]{0,2})(?:\\.(?:0|[1-9][0-9]{0,2})){3}";
 
-    record Received(String outcome, byte[] frame) {}
+`;
+
+const singleSocketState = String.raw`    record Received(String outcome, byte[] frame) {}
     private record Config(String bindHost, String connectHost, int port, JsonNode options) {}
 
     private final String runId = System.getenv("ZMQT_TEST_RUN_ID");
     private volatile boolean stopping;
     private long sequence;
-    private ZMQ.Socket socket;
-    private ZMQ.Poller poller;
-    private JsonNode options;
+`;
+
+const socketField = String.raw`    private ZMQ.Socket socket;
+`;
+
+const singleSocketPoller = String.raw`    private ZMQ.Poller poller;
+`;
+
+const validation = String.raw`    private JsonNode options;
 
     private static boolean exactFields(JsonNode value, Set<String> fields) {
         return value != null && value.isObject() && value.size() == fields.size()
@@ -89,7 +101,9 @@ final class ZmqtRuntime {
         return (int) number;
     }
 
-    private static Config load(String[] args) throws IOException {
+`;
+
+const singleSocketConfig = String.raw`    private static Config load(String[] args) throws IOException {
         Path path = Path.of("config", "zmq.json");
         if (args.length == 2 && args[0].equals("--config")) path = Path.of(args[1]);
         else if (args.length != 0) throw new IllegalArgumentException("Expected --config PATH");
@@ -104,7 +118,9 @@ final class ZmqtRuntime {
             checkInteger(config.get("port"), 1, 65535), options);
     }
 
-    private static List<String> addresses(String host) throws UnknownHostException {
+`;
+
+const endpoints = String.raw`    private static List<String> addresses(String host) throws UnknownHostException {
         if (host.equals("*") || numericAddress(host) != null) return List.of(host);
         return Arrays.stream(InetAddress.getAllByName(host))
             .sorted(Comparator.comparingInt(address -> address.getAddress().length))
@@ -150,7 +166,9 @@ final class ZmqtRuntime {
         }
     }
 
-    String nextId() {
+`;
+
+const singleSocketMessages = String.raw`    String nextId() {
         String prefix = runId == null || runId.isEmpty() ? "msg" : runId;
         return prefix + "-" + String.format(Locale.ROOT, "%04d", ++sequence);
     }
@@ -161,7 +179,9 @@ final class ZmqtRuntime {
         return payload;
     }
 
-    void log(String event, JsonNode data) {
+`;
+
+const logging = String.raw`    void log(String event, JsonNode data) {
         var entry = MessageCodec.object().put("event", event);
         if (data != null) {
             for (var field : data.properties()) entry.set(field.getKey(), field.getValue());
@@ -175,7 +195,9 @@ final class ZmqtRuntime {
         System.out.flush();
     }
 
-    String send(byte[] frame) {
+`;
+
+const singleSocketRuntime = String.raw`    String send(byte[] frame) {
         // sendTimeoutMs limits the wait for one send.
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(option("sendTimeoutMs"));
         try {
@@ -298,3 +320,25 @@ final class ZmqtRuntime {
     }
 }
 `;
+
+export const javaRuntime =
+  imports +
+  pollSlice +
+  configFields +
+  singleSocketState +
+  socketField +
+  singleSocketPoller +
+  validation +
+  singleSocketConfig +
+  endpoints +
+  singleSocketMessages +
+  logging +
+  singleSocketRuntime;
+
+export const javaAdvancedBase =
+  imports +
+  configFields +
+  socketField +
+  validation +
+  endpoints +
+  logging;

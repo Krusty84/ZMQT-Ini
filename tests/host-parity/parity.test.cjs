@@ -137,6 +137,42 @@ test("CLI prints a text summary with the absolute output path", (t) => {
   assert.ok(existsSync(join(output, "README.md")));
 });
 
+test("Core, CLI and Web generate the same advanced PUB/SUB project", async (t) => {
+  const config = projectConfig("python", "pub-sub", "proxy");
+  config.schemaVersion = "1.1";
+  config.messaging.extensions = ["last-value-caching", "espresso"];
+  const direct = core.generateProject(config);
+  assert.equal(direct.ok, true);
+  const workspace = setup(t, config);
+  const local = runJsonCli(workspace);
+  assert.equal(local.status, 0, local.stderr);
+  assert.deepEqual(JSON.parse(local.stdout), { manifest: direct.value.manifest, diagnostics: direct.diagnostics });
+  assert.deepEqual(diskFiles(workspace.output), direct.value.files.map((file) => ({
+    path: file.path,
+    bytes: Buffer.from(file.content, "utf8"),
+    ...mode((file.executable ? 0o755 : 0o644) & ~process.umask()),
+  })));
+  const response = await runWeb(config);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), direct);
+});
+
+test("Core, CLI and Web reject the same incompatible PUB/SUB extensions", async (t) => {
+  const config = projectConfig("node", "pub-sub", "server");
+  config.schemaVersion = "1.1";
+  config.messaging.extensions = ["clone", "black-box"];
+  const direct = core.generateProject(config);
+  assert.equal(direct.ok, false);
+  const workspace = setup(t, config);
+  const local = runJsonCli(workspace);
+  assert.equal(local.status, 1);
+  assert.deepEqual(JSON.parse(local.stderr), { diagnostics: direct.diagnostics });
+  assert.equal(existsSync(workspace.output), false);
+  const response = await runWeb(config);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), direct);
+});
+
 test("CLI prints warnings to stderr and still creates the project", (t) => {
   const config = projectConfig("cpp", "req-rep", "rep", ["0.0.0.0", "localhost"]);
   const { cwd, input, output } = setup(t, config);

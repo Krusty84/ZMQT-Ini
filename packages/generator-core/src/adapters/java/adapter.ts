@@ -58,11 +58,11 @@ export const javaAdapter: LanguageAdapter = {
       ),
       ...renderScripts(plan, {
         build: ["mvn -B -q package"],
-        run: ({ socketType }) => `java -cp ${javaJarPath} App${socketType}`,
+        run: ({ role }) => `java -cp ${javaJarPath} App${role.toUpperCase()}`,
         windows: {
           build: ["mvn.cmd -B -q package"],
           executable: "'java.exe'",
-          args: ({ socketType }) => `-cp ${javaJarPath} App${socketType}`,
+          args: ({ role }) => `-cp ${javaJarPath} App${role.toUpperCase()}`,
         },
       }),
     ];

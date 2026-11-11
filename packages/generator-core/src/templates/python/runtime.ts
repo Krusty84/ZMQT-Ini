@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-export const pythonRuntime = String.raw`import argparse
+const imports = String.raw`import argparse
 import ipaddress
 import json
 import math
@@ -19,8 +19,12 @@ import zmq
 from message_codec import decode
 
 
-_POLL_SLICE_MS = 50
-_OPTIONS = {
+`;
+
+const pollSlice = String.raw`_POLL_SLICE_MS = 50
+`;
+
+const validation = String.raw`_OPTIONS = {
     "sendHwm": (zmq.SNDHWM, 1, 1000000),
     "receiveHwm": (zmq.RCVHWM, 1, 1000000),
     "sendTimeoutMs": (zmq.SNDTIMEO, 1, 600000),
@@ -65,7 +69,9 @@ def _bounded_int(value, minimum, maximum):
     return int(value)
 
 
-def _load_config():
+`;
+
+const singleSocketConfig = String.raw`def _load_config():
     parser = argparse.ArgumentParser(exit_on_error=False)
     parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent / "config" / "zmq.json")
     config = decode(parser.parse_args().config.read_bytes())
@@ -83,7 +89,9 @@ def _load_config():
     return config
 
 
-def _addresses(host, port):
+`;
+
+const endpoints = String.raw`def _addresses(host, port):
     if host == "*" or _address(host) is not None:
         return [host]
     records = tcp.getaddrinfo(host, port, type=tcp.SOCK_STREAM)
@@ -111,7 +119,9 @@ def _bind(sock, host, port):
     raise OSError("Could not bind any address")
 
 
-class _Runtime:
+`;
+
+const singleSocketRuntime = String.raw`class _Runtime:
     def __init__(self):
         self.stopping = False
         self.run_id = os.environ.get("ZMQT_TEST_RUN_ID") or None
@@ -255,3 +265,16 @@ def run(socket_type, mode, active_options, subscription, behavior):
         runtime.log("SHUTDOWN")
     return result
 `;
+
+export const pythonRuntime =
+  imports +
+  pollSlice +
+  validation +
+  singleSocketConfig +
+  endpoints +
+  singleSocketRuntime;
+
+export const pythonAdvancedBase =
+  imports +
+  validation +
+  endpoints;

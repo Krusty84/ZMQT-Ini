@@ -7,13 +7,15 @@ import { parseConfig } from "../config/schema";
 import type { SchemaIssue } from "../config/compiled-schema.js";
 import { activeSocketOptions, patternRegistry } from "../patterns/registry";
 import type { SocketOption } from "../patterns/registry";
+import { extensionCombinations, extensionTopology } from "../patterns/pub-sub-extensions";
 import type {
+  AdvancedConfig,
   Diagnostic,
   NormalizedConfig,
   ValidationResult,
 } from "../public/types";
 import { sortDiagnostics } from "./diagnostics";
-import { classifyHost } from "./hosts";
+import { classifyHost, sameHost } from "./hosts";
 import { utf8ByteLength } from "./utf8";
 
 const maxBytes = 32_768;
@@ -42,6 +44,21 @@ function snapshot(input: unknown): unknown {
   for (const section of configSections) {
     const sectionData = copyRecord(data[section]);
     if (sectionData) data[section] = sectionData;
+  }
+  const messaging = data.messaging as Record<string, unknown> | undefined;
+  if (data.schemaVersion === "1.1" && messaging && typeof messaging === "object" &&
+      !Array.isArray(messaging)) {
+    const backup = copyRecord(messaging.backup);
+    if (backup) messaging.backup = backup;
+    const extensions = messaging.extensions;
+    if (Array.isArray(extensions)) {
+      // Seven entries are enough for the schema to report its six-item limit.
+      messaging.extensions = Array.from({ length: Math.min(extensions.length, 7) }, (_, index) => {
+        const property = Object.getOwnPropertyDescriptor(extensions, String(index));
+        if (property && !("value" in property)) throw new TypeError("Expected a JSON data property.");
+        return property?.value;
+      });
+    }
   }
   return data;
 }
@@ -86,9 +103,17 @@ function schemaDiagnostic({
       };
     case "const":
     case "enum": {
-      const [code, message] = unsupportedValues[path];
+      const [code, message] = unsupportedValues[path] ?? [
+        "UNSUPPORTED_EXTENSION", "Unsupported PUB/SUB extension.",
+      ];
       return { severity, code, path, message };
     }
+    case "minItems":
+      return { severity, code: "MISSING_EXTENSION", path, message: "Select a PUB/SUB extension." };
+    case "maxItems":
+      return { severity, code: "TOO_MANY_EXTENSIONS", path, message: "Too many PUB/SUB extensions." };
+    case "uniqueItems":
+      return { severity, code: "DUPLICATE_EXTENSION", path, message: "Select each extension once." };
     case "pattern":
       return {
         severity,
@@ -142,11 +167,90 @@ function exceedsSize(config: NormalizedConfig): boolean {
   return json.length > maxBytes || utf8ByteLength(json) > maxBytes;
 }
 
+function checkHosts(bindHost: string, connectHost: string, path: string): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const bind = classifyHost(bindHost);
+  const connect = classifyHost(connectHost);
+  if (!bind) {
+    diagnostics.push({
+      severity: "error",
+      code: "INVALID_HOST",
+      path: `${path}/bindHost`,
+      message: "Invalid bind host.",
+    });
+  }
+  if (!connect) {
+    diagnostics.push({
+      severity: "error",
+      code: "INVALID_HOST",
+      path: `${path}/connectHost`,
+      message: "Invalid connect host.",
+    });
+  } else if (connect === "unspecified") {
+    diagnostics.push({
+      severity: "error",
+      code: "UNSPECIFIED_CONNECT_HOST",
+      path: `${path}/connectHost`,
+      message: "Connect requires a destination address.",
+    });
+  }
+
+  if (bind && bind !== "loopback") {
+    diagnostics.push({
+      severity: "warning",
+      code: "UNENCRYPTED_EXTERNAL_BIND",
+      path: `${path}/bindHost`,
+      message: "Binding outside loopback exposes unencrypted traffic.",
+    });
+  }
+  return diagnostics;
+}
+
+const combinations = extensionCombinations().map(({ extensions }) => extensions.join(","));
+
+function checkAdvanced(config: AdvancedConfig, diagnostics: Diagnostic[]): void {
+  const { extensions, maxAgeMs, subtree, backup, port, bindHost, connectHost } = config.messaging;
+  const { clone, binaryStar, portCount } = extensionTopology(extensions);
+  const error = (code: string, field: string, message: string) => {
+    diagnostics.push({ severity: "error", code, path: `/messaging/${field}`, message });
+  };
+  if (!combinations.includes(extensions.join(","))) {
+    error("INCOMPATIBLE_EXTENSIONS", "extensions", "PUB/SUB extensions cannot be combined.");
+  }
+  for (const [field, value, active] of [
+    ["maxAgeMs", maxAgeMs, extensions.includes("suicidal-snail")],
+    ["subtree", subtree, clone],
+    ["backup", backup, binaryStar],
+  ] as const) {
+    if (value !== undefined && !active)
+      error("INACTIVE_EXTENSION_OPTION", field, "Option requires its PUB/SUB extension.");
+  }
+  if (binaryStar && !backup) error("MISSING_FIELD", "backup", "Binary Star requires a backup endpoint.");
+  if (subtree !== undefined && subtree !== "" &&
+      (!/^\/(?:[^/\u0000]+\/)+(?![\s\S])/u.test(subtree) || /[\uD800-\uDFFF]/u.test(subtree))) {
+    error("INVALID_SUBTREE", "subtree", "Use an empty subtree or a path such as /example/.");
+  }
+  if (port + portCount - 1 > 65535)
+    error("PORT_RANGE_OVERFLOW", "port", "The topology requires consecutive TCP ports.");
+  if (!backup) return;
+  diagnostics.push(...checkHosts(backup.bindHost, backup.connectHost, "/messaging/backup"));
+  if (backup.port + portCount - 1 > 65535)
+    error("PORT_RANGE_OVERFLOW", "backup/port", "The backup requires consecutive TCP ports.");
+  const localHosts = classifyHost(connectHost) === "loopback" && classifyHost(backup.connectHost) === "loopback";
+  const sameBind = classifyHost(bindHost) !== "unspecified" && sameHost(bindHost, backup.bindHost);
+  if ((localHosts || sameBind || sameHost(connectHost, backup.connectHost)) &&
+      Math.abs(port - backup.port) < portCount) {
+    error("OVERLAPPING_PORT_RANGES", "backup/port", "Server port ranges overlap on the same host.");
+  }
+}
+
 function checkSemantics(config: NormalizedConfig): ValidationResult {
   const { pattern, bindRole, bindHost, connectHost } = config.messaging;
   const { roles, permittedBindRoles } = patternRegistry[pattern];
-  const diagnostics: Diagnostic[] = [];
-  if (!permittedBindRoles.includes(bindRole)) {
+  const bindRoles = config.schemaVersion === "1.1"
+    ? extensionTopology(config.messaging.extensions).bindRoles : permittedBindRoles;
+  const diagnostics = checkHosts(bindHost, connectHost, "/messaging");
+  if (!bindRoles.includes(bindRole)) {
     diagnostics.push({
       severity: "error",
       code: "INVALID_BIND_ROLE",
@@ -155,44 +259,11 @@ function checkSemantics(config: NormalizedConfig): ValidationResult {
       params: { pattern },
     });
   }
-
-  const bind = classifyHost(bindHost);
-  const connect = classifyHost(connectHost);
-  if (!bind) {
-    diagnostics.push({
-      severity: "error",
-      code: "INVALID_HOST",
-      path: "/messaging/bindHost",
-      message: "Invalid bind host.",
-    });
-  }
-  if (!connect) {
-    diagnostics.push({
-      severity: "error",
-      code: "INVALID_HOST",
-      path: "/messaging/connectHost",
-      message: "Invalid connect host.",
-    });
-  } else if (connect === "unspecified") {
-    diagnostics.push({
-      severity: "error",
-      code: "UNSPECIFIED_CONNECT_HOST",
-      path: "/messaging/connectHost",
-      message: "Connect requires a destination address.",
-    });
+  if (config.schemaVersion === "1.1") checkAdvanced(config, diagnostics);
+  if (diagnostics.some(({ severity }) => severity === "error")) {
+    return { ok: false, diagnostics: sortDiagnostics(diagnostics.filter(({ severity }) => severity === "error")) };
   }
 
-  if (diagnostics.length > 0)
-    return { ok: false, diagnostics: sortDiagnostics(diagnostics) };
-
-  if (bind !== "loopback") {
-    diagnostics.push({
-      severity: "warning",
-      code: "UNENCRYPTED_EXTERNAL_BIND",
-      path: "/messaging/bindHost",
-      message: "Binding outside loopback exposes unencrypted traffic.",
-    });
-  }
   if (pattern === "pub-sub") {
     diagnostics.push({
       severity: "warning",
@@ -209,8 +280,13 @@ function checkSemantics(config: NormalizedConfig): ValidationResult {
       message: "Close can discard unsent messages when linger is zero.",
     });
   }
+  if (config.schemaVersion === "1.1") {
+    const { messaging } = config;
+    if (messaging.extensions.includes("suicidal-snail")) messaging.maxAgeMs ??= 1000;
+    if (messaging.extensions.includes("clone")) messaging.subtree ??= "";
+  }
   const configuredOptions = Object.keys(config.socketOptions) as SocketOption[];
-  for (const role of roles) {
+  for (const role of config.schemaVersion === "1.0" ? roles : []) {
     const active = activeSocketOptions(role);
     for (const option of configuredOptions) {
       if (!active.includes(option)) {

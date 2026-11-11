@@ -10,19 +10,22 @@ export function inspectProject(input: unknown): CoreResult<ProjectSummary> {
   const result = planProject(input);
   if (!result.ok) return result;
 
-  const { project, topology } = result.value;
+  const plan = result.value;
+  const { project } = plan;
   return {
     ok: true,
     value: {
       projectName: project.name,
       language: project.language,
       pattern: project.pattern,
-      roles: topology.roles.map(({ role, socketType, endpoint }) => ({
-        role,
-        socketType,
-        mode: endpoint.mode,
-        endpoint: endpoint.uri,
-      })),
+      ...(plan.irVersion === "1.1" && { extensions: plan.messaging.extensions }),
+      roles: plan.irVersion === "1.0"
+        ? plan.topology.roles.map(({ role, socketType, endpoint }) => ({
+            role, socketType, mode: endpoint.mode, endpoint: endpoint.uri,
+          }))
+        : plan.applications.flatMap(({ role, sockets }) => sockets.map(({ name, type, mode, endpoint }) => ({
+            role, socket: name, socketType: type, mode, endpoint,
+          }))),
     },
     diagnostics: result.diagnostics,
   };

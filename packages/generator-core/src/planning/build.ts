@@ -9,17 +9,18 @@ import {
 } from "../catalog/capabilities";
 import { buildBehavior } from "../patterns/behavior";
 import { patternRegistry, type RoleDefinition } from "../patterns/registry";
-import type { CoreResult, Diagnostic, NormalizedConfig } from "../public/types";
+import type { BasicConfig, CoreResult, Diagnostic } from "../public/types";
 import { compileTopology, type RolePlan } from "../topology/compiler";
 import { buildLifecycle } from "../topology/lifecycle";
 import { validateConfig } from "../validation/config";
 import type { ApplicationPlan, GenerationPlan } from "./ir";
 import { validatePlan } from "./validate";
+import { compilePubSub, validatePubSubPlan, type ProjectPlan } from "./pub-sub";
 
 const p0Capabilities = p0LanguageCapabilities();
 
 function buildPlan(
-  config: NormalizedConfig,
+  config: BasicConfig,
   diagnostics: readonly Diagnostic[],
 ): GenerationPlan {
   const { name, language } = config.project;
@@ -61,12 +62,14 @@ function buildPlan(
   };
 }
 
-export function planProject(input: unknown): CoreResult<GenerationPlan> {
+export function planProject(input: unknown): CoreResult<ProjectPlan> {
   const validation = validateConfig(input);
   if (!validation.ok) return validation;
 
-  const plan = buildPlan(validation.value, validation.diagnostics);
-  const diagnostics = validatePlan(plan, p0Capabilities);
+  const plan = validation.value.schemaVersion === "1.0"
+    ? buildPlan(validation.value, validation.diagnostics)
+    : compilePubSub(validation.value, validation.diagnostics);
+  const diagnostics = plan.irVersion === "1.0" ? validatePlan(plan, p0Capabilities) : validatePubSubPlan(plan);
   if (diagnostics.length > 0) return { ok: false, diagnostics };
 
   return { ok: true, value: plan, diagnostics: validation.diagnostics };

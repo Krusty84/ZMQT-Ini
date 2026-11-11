@@ -5,7 +5,7 @@
 ZMQT-Ini is a project initializer for ZeroMQ applications, not a messaging server or broker. Its goal is to turn a declarative JSON configuration into a small, runnable, understandable project with correct ZeroMQ topology, socket lifecycle, message handling, dependencies, tests, and documentation. Generated code must remain usable and editable without ZMQT-Ini.
 The long-term goal is one reusable generation engine with multiple independent clients: a CLI (already present), a possible VS Code extension, and a possible Web application/API. New clients must not duplicate the rules for ZeroMQ or the code-generation logic.
 
-The independent TypeScript/Node.js package @zmqt-ini/generator-core implements the business logic. It supports Python, C++, Java, and Node.js; REQ/REP, PUB/SUB, and PUSH/PULL; TCP; two applications with one Bind and one Connect, and single-frame UTF-8 JSON messages. Generated projects include runtime configuration, pinned dependencies, build instructions, tests, and a README.
+The independent TypeScript/Node.js package @zmqt-ini/generator-core implements the business logic for Python, C++, Java, and Node.js. Schema 1.0 selects REQ/REP, PUB/SUB, or PUSH/PULL over TCP with two applications and single-frame UTF-8 JSON. Schema 1.1 selects advanced PUB/SUB extensions. Generated projects include runtime configuration, pinned dependencies, build instructions, tests, and a README.
 
 The public API is getCapabilities(), validateConfig(), inspectProject(), and generateProject(). Calls are synchronous. Core returns diagnostics and an in-memory GeneratedProject (manifest plus virtual files), it does not write files, create ZIP archives, start processes, make network calls, or depend on UI frameworks. Those operations belong to clients/hosts.
 
@@ -34,6 +34,8 @@ Pattern definitions own ZeroMQ behavior, language adapters translate validated o
 4. [generateProject](packages/generator-core/src/public/generate.ts) selects a built-in [language adapter](packages/generator-core/src/adapters). The [assembler](packages/generator-core/src/artifacts/assemble.ts) checks the plan against the adapter's capabilities. The adapter renders behavior graphs as state machines and emits runtime code, codecs, build files, scripts, tests, and the README.
 5. The assembler normalizes line endings, sorts paths, and runs the [Output Validator](packages/generator-core/src/artifacts/validate.ts). The validator checks required paths, executable flags, runtime configuration, source markers, dependency declarations, and size.
 
+For schema 1.1, the [PUB/SUB planner](packages/generator-core/src/planning/pub-sub.ts) records the applications in launch order, names each socket, and defines the Binary Star transitions. The [advanced source renderer](packages/generator-core/src/adapters/advanced.ts) emits those plans and the native runtime for the selected language.
+
 ## Key design decisions
 
 - The [package entry point](packages/generator-core/src/index.ts) exports four operations and their result types. The plan, behavior graphs, and adapter interfaces are internal.
@@ -42,7 +44,7 @@ Pattern definitions own ZeroMQ behavior, language adapters translate validated o
 
 ## Generated runtime
 
-The two applications use REQ/REP, PUB/SUB, or PUSH/PULL over TCP. Each role's entry point passes its state machine to `run`. Both applications read `config/zmq.json` for hosts, the port, and socket options. The [runtime templates](packages/generator-core/src/templates) handle DNS, socket setup, message exchange, and cleanup. The codecs use single-frame UTF-8 JSON. `READY` reports local socket setup. The integration runner checks delivery through a response, event, or task result.
+Each application reads `config/zmq.json` for TCP endpoints and socket options. The [runtime templates](packages/generator-core/src/templates) handle DNS, socket setup, message exchange, and cleanup. Advanced PUB/SUB uses multipart topic and event messages. Clone uses the [12/CHP](https://rfc.zeromq.org/spec/12/) frames for snapshots and binary values. `READY` reports local socket setup.
 
 ### Integration comments
 
@@ -54,15 +56,15 @@ Comments in the runtime templates explain socket options, timeouts, and errors. 
 
 Adapters supply build and launch commands to the [shared script template](packages/generator-core/src/templates/shared/scripts.ts). It emits `build.sh`, `run.sh`, `build.ps1`, and `run.ps1`. Each script runs from the generated project root.
 
-The run script starts the Bind app first. The Bind app must report `READY` on its first stdout line within 10 seconds. The script then starts the Connect app on the same host. When either app exits or the user presses Ctrl+C, the script stops the remaining process. It returns a nonzero status on startup or application failure.
+The run script starts the applications on the same host in plan order. Each startup check expects `READY` on the first stdout line within 10 seconds. For Binary Star, the launcher keeps the client and the surviving server running after a server exits. Ctrl+C stops the local applications.
 
 ## Dependencies and validation
 
-TypeScript builds the package. A [build script](packages/generator-core/scripts/compile-schema.cjs) uses Ajv to emit a standalone validator. The npm package has zero runtime dependencies. Generated projects use separate ZeroMQ libraries for Python, C++, Java, and Node.js. Their adapters emit the pinned build files.
+TypeScript builds the package. A [build script](packages/generator-core/scripts/compile-schema.cjs) uses Ajv to emit standalone validators. The npm package has zero runtime dependencies. Generated projects use separate ZeroMQ libraries for Python, C++, Java, and Node.js. Their adapters emit the pinned build files.
 
 The `generate` scripts require the Core build. Relative input and output paths use the caller's working directory. See the [repository README](README.md) for setup and launch commands.
 
-The [CI workflow](.github/workflows/generator-core-ci.yml) runs Core and host-parity tests on Linux. [Launcher tests](packages/generator-core/tests/unit/scripts.test.cjs) use test apps to check startup order, exit status, and cleanup. The integration job builds and runs 24 generated configurations, with two Bind orientations for each language and pattern. Architecture tests check the installed package in a restricted Node.js process. See the [package README](packages/generator-core/README.md) for commands and toolchain versions.
+The [CI workflow](.github/workflows/generator-core-ci.yml) runs Core and host-parity tests on Linux. [Launcher tests](packages/generator-core/tests/unit/scripts.test.cjs) use test apps to check startup order, exit status, and cleanup. The integration job builds and runs 24 basic configurations and 36 advanced PUB/SUB configurations. The advanced suite checks Clone with independent 12/CHP peers. Architecture tests check the installed package in a restricted Node.js process. See the [package README](packages/generator-core/README.md) for commands and toolchain versions.
 
 The manifest records the adapter's `templateVersion` and `dependencySetVersion`. Golden tests hash the manifest and generated files, including source comments. Role comment tests check that selected comments appear at the start of the expected state and in the correct role. [Manifest assembly](packages/generator-core/src/artifacts/assemble.ts), [golden tests](packages/generator-core/tests/golden/project.test.cjs), [role comment tests](packages/generator-core/tests/unit/role-comments.test.cjs)
 

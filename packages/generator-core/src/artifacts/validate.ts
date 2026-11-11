@@ -4,8 +4,10 @@
  */
 
 import type { ArtifactLayout } from "../adapters/types";
+import { renderAdvancedEntry } from "../adapters/advanced";
 import { getCapabilities } from "../catalog/capabilities";
 import type { ApplicationPlan, GenerationPlan } from "../planning/ir";
+import type { ProjectPlan } from "../planning/pub-sub";
 import type { Diagnostic, GeneratedFile } from "../public/types";
 import { utf8ByteLength } from "../validation/utf8";
 import { runtimeConfigFile } from "./files";
@@ -65,6 +67,13 @@ const sourceMarkers: Record<Language, Record<string, string>> = {
   },
 };
 
+const advancedRuntimeMarkers = {
+  python: ["zmqt_runtime.py", "def run_advanced(spec_json, program):"],
+  node: ["zmqt_runtime.mjs", "export async function runAdvanced(spec, program) {"],
+  java: ["src/main/java/ZmqtRuntime.java", "    static int runAdvanced(String[] args, String descriptor) {"],
+  cpp: ["zmqt_runtime.cpp", "int run_advanced(int argc, char* argv[], std::string_view source) {"],
+} as const;
+
 function matchesApplication(
   content: string,
   language: Language,
@@ -104,33 +113,42 @@ function matchesApplication(
 function matchesSource(
   path: string,
   content: string,
-  plan: GenerationPlan,
+  plan: ProjectPlan,
   layout: ArtifactLayout,
 ): boolean {
   const { language, pattern } = plan.project;
-  const application = plan.applications.find(
-    ({ role }) => layout.entryPoint(role) === path,
-  );
-  if (application) return matchesApplication(content, language, application);
+  if (plan.irVersion === "1.1") {
+    const application = plan.applications.find(({ role }) => layout.entryPoint(role) === path);
+    if (application) return content === renderAdvancedEntry(plan, application.role);
+    if (path === "README.md") return content.includes(plan.messaging.extensions.join(", "));
+    if (path === "tests/integration_test.py") {
+      return content.split("\n").includes(`EXTENSIONS = ${JSON.stringify(plan.messaging.extensions)}`);
+    }
+    const [runtimePath, runtimeMarker] = advancedRuntimeMarkers[language];
+    if (path === runtimePath && !content.split("\n").includes(runtimeMarker)) return false;
+  } else {
+    const application = plan.applications.find(({ role }) => layout.entryPoint(role) === path);
+    if (application) return matchesApplication(content, language, application);
+    if (path === "README.md") {
+      return content.includes(`\nThis project runs the ${pattern} pattern over TCP`);
+    }
+    if (path === "tests/integration_test.py") {
+      const bind = plan.applications.find(({ endpoint }) => endpoint.mode === "bind")!;
+      const lines = content.split("\n");
+      return lines.includes(`PATTERN = ${JSON.stringify(pattern)}`) &&
+        lines.includes(`BIND_ROLE = ${JSON.stringify(bind.role)}`);
+    }
+  }
 
   const marker = sourceMarkers[language][path];
   if (marker) return content.split("\n").includes(marker);
-  if (path === "README.md") {
-    return content.includes(`\nThis project runs the ${pattern} pattern over TCP`);
-  }
-  if (path === "tests/integration_test.py") {
-    const bind = plan.applications.find(({ endpoint }) => endpoint.mode === "bind")!;
-    const lines = content.split("\n");
-    return lines.includes(`PATTERN = ${JSON.stringify(pattern)}`) &&
-      lines.includes(`BIND_ROLE = ${JSON.stringify(bind.role)}`);
-  }
   return true;
 }
 
 function matchesNpmDependencies(
   path: string,
   content: string,
-  plan: GenerationPlan,
+  plan: ProjectPlan,
   languageVersion: string,
 ): boolean {
   try {
@@ -153,7 +171,7 @@ function matchesNpmDependencies(
 function matchesDependencies(
   path: string,
   content: string,
-  plan: GenerationPlan,
+  plan: ProjectPlan,
   languageVersion: string,
 ): boolean {
   switch (path) {
@@ -188,7 +206,7 @@ function matchesDependencies(
 
 export function validateArtifacts(
   files: readonly GeneratedFile[],
-  plan: GenerationPlan,
+  plan: ProjectPlan,
   layout: ArtifactLayout,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];

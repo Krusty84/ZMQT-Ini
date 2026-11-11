@@ -5,15 +5,17 @@
 
 import generator from "../../package.json";
 import type { LanguageAdapter } from "../adapters/types";
+import { generateAdvancedDocsAndTest, generateAdvancedSources } from "../adapters/advanced";
 import { getCapabilities } from "../catalog/capabilities";
-import type { GenerationPlan } from "../planning/ir";
+import { validatePubSubPlan, type ProjectPlan } from "../planning/pub-sub";
 import { validatePlan } from "../planning/validate";
 import type { CoreResult, Diagnostic, GeneratedProject } from "../public/types";
 import { sortDiagnostics } from "../validation/diagnostics";
 import { validateArtifacts } from "./validate";
+import { runtimeConfigFile } from "./files";
 
 export function assembleProject(
-  plan: GenerationPlan,
+  plan: ProjectPlan,
   adapter: LanguageAdapter,
 ): CoreResult<GeneratedProject> {
   const fail = (
@@ -32,7 +34,8 @@ export function assembleProject(
       },
     ]);
   }
-  const diagnostics = validatePlan(plan, adapter.capabilities());
+  const diagnostics = plan.irVersion === "1.0"
+    ? validatePlan(plan, adapter.capabilities()) : validatePubSubPlan(plan);
   if (diagnostics.length > 0) return fail(diagnostics);
   const language = getCapabilities().languages.find(
     ({ id }) => id === adapter.id,
@@ -55,13 +58,12 @@ export function assembleProject(
     ]);
   }
 
-  const files = [
-    ...adapter.generate(plan),
-    ...adapter.generateBuildFiles(plan),
-    ...adapter.generateRuntimeConfig(plan),
-    ...adapter.generateTests(plan),
-    adapter.generateReadme(plan),
-  ]
+  const sources = plan.irVersion === "1.0"
+    ? adapter.generate(plan) : generateAdvancedSources(plan, adapter.layout);
+  const projectFiles = plan.irVersion === "1.0"
+    ? [...adapter.generateRuntimeConfig(plan), ...adapter.generateTests(plan), adapter.generateReadme(plan)]
+    : [runtimeConfigFile(plan), ...generateAdvancedDocsAndTest(plan)];
+  const files = [...sources, ...adapter.generateBuildFiles(plan), ...projectFiles]
     .map(({ path, encoding, executable, content }) => ({
       path,
       encoding,
@@ -79,12 +81,13 @@ export function assembleProject(
     value: {
       manifest: {
         manifestVersion: 1,
-        configSchemaVersion: "1.0",
-        irVersion: plan.irVersion,
+        ...(plan.irVersion === "1.0"
+          ? { configSchemaVersion: "1.0", irVersion: "1.0" } as const
+          : { configSchemaVersion: "1.1", irVersion: "1.1", extensions: plan.messaging.extensions } as const),
         generatorVersion: generator.version,
         language: plan.project.language,
         pattern: plan.project.pattern,
-        templateVersion: adapter.templateVersion,
+        templateVersion: plan.irVersion === "1.0" ? adapter.templateVersion : "1.2.0",
         dependencySetVersion: adapter.dependencySetVersion,
       },
       files,

@@ -45,7 +45,7 @@ int run(int argc, char* argv[], zmq::socket_type socket_type, bool binds,
 } // namespace zmqt
 `;
 
-export const cppRuntime = String.raw`#include "zmqt_runtime.hpp"
+const validation = String.raw`#include "zmqt_runtime.hpp"
 
 #include <algorithm>
 #include <array>
@@ -148,7 +148,9 @@ int bounded_int(const Json& value, int minimum, int maximum) {
     return static_cast<int>(number);
 }
 
-Config load_config(int argc, char* argv[]) {
+`;
+
+const singleSocketConfig = String.raw`Config load_config(int argc, char* argv[]) {
     const char* path = "config/zmq.json";
     if (argc == 3 && std::string_view{argv[1]} == "--config") path = argv[2];
     else if (argc != 1) throw std::invalid_argument("Expected --config PATH");
@@ -170,7 +172,9 @@ Config load_config(int argc, char* argv[]) {
     return config;
 }
 
-std::vector<std::string> addresses(const std::string& host, bool connects) {
+`;
+
+const endpoints = String.raw`std::vector<std::string> addresses(const std::string& host, bool connects) {
     if (check_host(host, connects) != Host::dns) return {host};
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -222,7 +226,9 @@ void log_event(std::string_view event, Json data = Json::object()) {
     std::cout << data.dump(-1, ' ', true) << std::endl;
 }
 
-struct LingerOnClose {
+`;
+
+const singleSocketRuntime = String.raw`struct LingerOnClose {
     zmq::socket_t& socket;
     int linger_ms;
     bool& failed;
@@ -367,3 +373,13 @@ int run(int argc, char* argv[], zmq::socket_type socket_type, bool binds,
 
 } // namespace zmqt
 `;
+
+export const cppRuntime =
+  validation +
+  singleSocketConfig +
+  endpoints +
+  singleSocketRuntime;
+
+export const cppAdvancedBase =
+  validation +
+  endpoints + "} // namespace\n} // namespace zmqt\n";

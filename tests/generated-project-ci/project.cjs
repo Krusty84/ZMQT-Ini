@@ -52,11 +52,13 @@ function projectConfig(
 }
 
 function createProject(t, language, pattern, bindRole, hosts) {
-  const workspace = mkdtempSync(join(tmpdir(), `zmqt-${language}-project-`));
+  return writeProject(t, projectConfig(language, pattern, bindRole, hosts));
+}
+
+function writeProject(t, config) {
+  const workspace = mkdtempSync(join(tmpdir(), `zmqt-${config.project.language}-project-`));
   t.after(() => rmSync(workspace, { force: true, recursive: true }));
-  const project = core.generateProject(
-    projectConfig(language, pattern, bindRole, hosts),
-  );
+  const project = core.generateProject(config);
   assert.equal(project.ok, true, JSON.stringify(project.diagnostics));
 
   for (const file of project.value.files) {
@@ -70,4 +72,4 @@ function createProject(t, language, pattern, bindRole, hosts) {
   return workspace;
 }
 
-module.exports = { core, createProject, orientations, projectConfig };
+module.exports = { core, createProject, orientations, projectConfig, writeProject };
