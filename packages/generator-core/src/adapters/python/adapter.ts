@@ -22,7 +22,7 @@ const entryPoint = (role: string) => `app_${role}.py`;
 
 export const pythonAdapter: LanguageAdapter = {
   id: "python",
-  templateVersion: "1.1.0",
+  templateVersion: "1.1.2",
   dependencySetVersion: "1.0.0",
   layout: {
     entryPoint,

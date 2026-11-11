@@ -8,6 +8,7 @@ import type {
   BehaviorNode,
   BehaviorOperation,
 } from "../../planning/ir";
+import { roleComments } from "../../templates/shared/role-comments";
 
 type Build = Extract<BehaviorOperation, { op: "build" }>;
 type Transitions = BehaviorNode["transitions"];
@@ -173,6 +174,7 @@ export function renderJavaApplication(application: ApplicationPlan): string {
   const optionsList = Object.keys(options)
     .map((option) => JSON.stringify(option))
     .join(", ");
+  const comments = roleComments[socketType];
   return [
     "import java.util.HashMap;",
     "import java.util.List;",
@@ -188,6 +190,7 @@ export function renderJavaApplication(application: ApplicationPlan): string {
     "            switch (state) {",
     ...behavior.nodes.flatMap((node) => [
       `                case ${JSON.stringify(node.id)} -> {`,
+      ...(comments[node.id] ?? []).map((line) => `                    // ${line}`),
       ...renderNode(node).map((line) => `                    ${line}`),
       "                }",
     ]),
@@ -197,6 +200,7 @@ export function renderJavaApplication(application: ApplicationPlan): string {
     "    }",
     "",
     "    public static void main(String[] args) {",
+    "        // Keep System.exit in the standalone entry point.",
     `        System.exit(ZmqtRuntime.run(args, SocketType.${socketType}, ${JSON.stringify(endpoint.mode)},`,
     `            List.of(${optionsList}), ${JSON.stringify(subscription?.prefix ?? null)}, ${className}::behavior));`,
     "    }",

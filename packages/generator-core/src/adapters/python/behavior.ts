@@ -9,6 +9,7 @@ import type {
   BehaviorOperation,
   JsonValue,
 } from "../../planning/ir";
+import { roleComments } from "../../templates/shared/role-comments";
 
 type Build = Extract<BehaviorOperation, { op: "build" }>;
 type Transitions = BehaviorNode["transitions"];
@@ -163,8 +164,10 @@ export function renderPythonApplication(application: ApplicationPlan): string {
   const subscription = lifecycle.startup.find(
     (step) => step.op === "apply-subscription",
   );
+  const comments = roleComments[socketType];
   const cases = behavior.nodes.flatMap((node) => [
     `            case ${JSON.stringify(node.id)}:`,
+    ...(comments[node.id] ?? []).map((line) => `                # ${line}`),
     ...renderNode(node).map((line) => `                ${line}`),
   ]);
 

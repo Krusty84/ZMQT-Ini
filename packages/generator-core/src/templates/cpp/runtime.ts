@@ -18,6 +18,8 @@ enum class Outcome { ok, timeout, error, shutdown };
 
 class Runtime {
 public:
+    // Pass a configured socket from your application.
+    // Keep the socket and options alive for the lifetime of Runtime.
     Runtime(zmq::socket_t& socket, const Json& options);
     std::string next_id();
     Json example_payload(bool include_run_id) const;
@@ -226,6 +228,7 @@ struct LingerOnClose {
     bool& failed;
 
     ~LingerOnClose() {
+        // lingerMs limits how long pending sends can stay queued after socket close.
         try { socket.set(zmq::sockopt::linger, linger_ms); }
         catch (const zmq::error_t&) { failed = true; }
     }
@@ -252,6 +255,8 @@ void Runtime::log(std::string_view event, const Json& data) const { log_event(ev
 
 template <typename Transfer>
 Outcome Runtime::transfer(Transfer operation, short events, int timeout_ms) {
+    // sendTimeoutMs or receiveTimeoutMs limits the wait for one operation.
+    // Poll in short intervals to check for shutdown.
     const auto deadline = Clock::now() + Milliseconds{timeout_ms};
     std::array<zmq::pollitem_t, 1> sockets{{{socket_.handle(), 0, events, 0}}};
     try {
@@ -306,6 +311,7 @@ Outcome Runtime::wait(int milliseconds) const {
 int run(int argc, char* argv[], zmq::socket_type socket_type, bool binds,
         std::initializer_list<std::string_view> active_options, std::optional<std::string_view> subscription,
         int (*behavior)(Runtime&)) {
+    // Use your application's configuration, logger, and shutdown hook here.
     std::signal(SIGINT, stop);
     std::signal(SIGTERM, stop);
 
@@ -313,10 +319,12 @@ int run(int argc, char* argv[], zmq::socket_type socket_type, bool binds,
     try {
         config = load_config(argc, argv);
     } catch (const std::exception&) {
+        // Use CONFIG_ERROR when startup settings cannot be read or validated.
         log_event("CONFIG_ERROR");
         return 1;
     }
 
+    // Socket setup, connect, and I/O failures use TRANSPORT_ERROR.
     std::string_view error_event = "TRANSPORT_ERROR";
     bool cleanup_failed = false;
     int result = 1;
@@ -324,13 +332,17 @@ int run(int argc, char* argv[], zmq::socket_type socket_type, bool binds,
         zmq::context_t context(1);
         zmq::socket_t socket(context, socket_type);
         const LingerOnClose cleanup{socket, config.options.at("lingerMs").get<int>(), cleanup_failed};
+        // Apply the role's options before bind or connect.
+        // sendHwm and receiveHwm limit the number of queued messages.
         for (const auto& option : socket_options) {
             if (std::find(active_options.begin(), active_options.end(), option.name) == active_options.end()) continue;
             const int value = config.options.at(option.name).get<int>();
             if (zmq_setsockopt(socket.handle(), option.zmq_option, &value, sizeof(value)) != 0) throw zmq::error_t();
         }
+        // An empty SUB prefix matches every message.
         if (subscription) socket.set(zmq::sockopt::subscribe, std::string(*subscription));
         if (binds) {
+            // Report a failure to open the local endpoint as BIND_ERROR.
             error_event = "BIND_ERROR";
             bind(socket, config);
         } else {

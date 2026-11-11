@@ -137,6 +137,8 @@ class _Runtime:
         print(json.dumps(entry, ensure_ascii=True, allow_nan=False, separators=(",", ":")), flush=True)
 
     def _transfer(self, operation, events, timeout_ms):
+        # sendTimeoutMs or receiveTimeoutMs limits the wait for one operation.
+        # Poll in short intervals to check for shutdown.
         deadline = time.monotonic() + timeout_ms / 1000
         try:
             while not self.stopping:
@@ -176,6 +178,8 @@ class _Runtime:
 
 
 def _cleanup(context, sock, linger):
+    # lingerMs limits how long pending sends can stay queued after socket close.
+    # Close the socket before terminating its context.
     try:
         if sock is not None:
             try:
@@ -188,16 +192,19 @@ def _cleanup(context, sock, linger):
 
 
 def run(socket_type, mode, active_options, subscription, behavior):
+    # Use your application's configuration, logger, and shutdown hook here.
     runtime = _Runtime()
 
     def stop(_signum, _frame):
         runtime.stopping = True
 
+    # Register these signal handlers on the main thread.
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     try:
         config = _load_config()
     except (argparse.ArgumentError, OSError, ValueError):
+        # Use CONFIG_ERROR when startup settings cannot be read or validated.
         runtime.log("CONFIG_ERROR")
         return 1
 
@@ -205,19 +212,24 @@ def run(socket_type, mode, active_options, subscription, behavior):
     context = None
     sock = None
     result = 1
+    # Socket setup, connect, and I/O failures use TRANSPORT_ERROR.
     error_event = "TRANSPORT_ERROR"
     try:
         context = zmq.Context()
         sock = context.socket(getattr(zmq, socket_type))
         runtime.socket = sock
         runtime.options = options
+        # Apply the role's options before bind or connect.
+        # sendHwm and receiveHwm limit the number of queued messages.
         for name in active_options:
             sock.setsockopt(_OPTIONS[name][0], options[name])
+        # An empty SUB prefix matches every message.
         if subscription is not None:
             sock.setsockopt_string(zmq.SUBSCRIBE, subscription)
 
         port = config["port"]
         if mode == "bind":
+            # Report a failure to open the local endpoint as BIND_ERROR.
             error_event = "BIND_ERROR"
             _bind(sock, config["bindHost"], port)
         else:

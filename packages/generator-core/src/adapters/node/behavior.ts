@@ -8,6 +8,7 @@ import type {
   BehaviorNode,
   BehaviorOperation,
 } from "../../planning/ir";
+import { roleComments } from "../../templates/shared/role-comments";
 
 type Build = Extract<BehaviorOperation, { op: "build" }>;
 type Transitions = BehaviorNode["transitions"];
@@ -151,8 +152,10 @@ export function renderNodeApplication(application: ApplicationPlan): string {
   const subscription = lifecycle.startup.find(
     (step) => step.op === "apply-subscription",
   );
+  const comments = roleComments[socketType];
   const cases = behavior.nodes.flatMap((node) => [
     `      case ${JSON.stringify(node.id)}: {`,
+    ...(comments[node.id] ?? []).map((line) => `        // ${line}`),
     ...renderNode(node).map((line) => `        ${line}`),
     ...(node.operation.op === "stop" ? [] : ["        break;"]),
     "      }",
@@ -173,6 +176,8 @@ export function renderNodeApplication(application: ApplicationPlan): string {
     "  }",
     "}",
     "",
+    "// Importing this file starts the role and sets process.exitCode when it finishes.",
+    "// Move the run call into your application's startup code when you embed the role.",
     "process.exitCode = await run(",
     `  ${JSON.stringify(socketType)},`,
     `  ${JSON.stringify(endpoint.mode)},`,

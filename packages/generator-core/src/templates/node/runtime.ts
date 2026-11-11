@@ -119,6 +119,7 @@ class Runtime {
   }
 
   async transfer(operation) {
+    // The socket applies sendTimeoutMs or receiveTimeoutMs to one operation.
     // Yield to signals even if each native operation resolves immediately.
     await setImmediate();
     if (this.stopping) return ["shutdown"];
@@ -127,6 +128,7 @@ class Runtime {
       return this.stopping ? ["shutdown"] : ["ok", value];
     } catch (error) {
       if (this.stopping) return ["shutdown"];
+      // Treat EAGAIN as a timeout and other failures as transport errors.
       return [error.code === "EAGAIN" ? "timeout" : "error"];
     }
   }
@@ -153,6 +155,7 @@ class Runtime {
 }
 
 export async function run(socketType, mode, activeOptions, subscription, behavior) {
+  // Use your application's configuration, logger, and shutdown hook here.
   const runtime = new Runtime();
   const stop = () => { runtime.stopping = true; };
   process.on("SIGINT", stop);
@@ -160,15 +163,21 @@ export async function run(socketType, mode, activeOptions, subscription, behavio
   let socket;
   let watcher;
   let result = 1;
+  // Use CONFIG_ERROR when startup settings cannot be read or validated.
   let errorEvent = "CONFIG_ERROR";
   try {
     const config = await loadConfig();
+    // Socket setup, connect, and I/O failures use TRANSPORT_ERROR.
     errorEvent = "TRANSPORT_ERROR";
     socket = new constructors[socketType]();
     runtime.socket = socket;
+    // Apply the role's options before bind or connect.
+    // sendHwm and receiveHwm limit the number of queued messages.
     for (const name of activeOptions) socket[options[name][0]] = config.socketOptions[name];
+    // An empty SUB prefix matches every message.
     if (subscription !== null) socket.subscribe(subscription);
     if (mode === "bind") {
+      // Report a failure to open the local endpoint as BIND_ERROR.
       errorEvent = "BIND_ERROR";
       await bind(socket, config.bindHost, config.port);
     } else {
@@ -188,6 +197,7 @@ export async function run(socketType, mode, activeOptions, subscription, behavio
     else runtime.log(errorEvent);
   } finally {
     clearInterval(watcher);
+    // lingerMs limits how long pending sends can stay queued after socket close.
     socket?.close();
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);

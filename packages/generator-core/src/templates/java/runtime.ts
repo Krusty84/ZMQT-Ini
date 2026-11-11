@@ -176,6 +176,7 @@ final class ZmqtRuntime {
     }
 
     String send(byte[] frame) {
+        // sendTimeoutMs limits the wait for one send.
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(option("sendTimeoutMs"));
         try {
             while (!stopping) {
@@ -191,6 +192,7 @@ final class ZmqtRuntime {
     }
 
     Received receive() {
+        // receiveTimeoutMs limits the wait for one receive.
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(option("receiveTimeoutMs"));
         try {
             while (!stopping) {
@@ -211,6 +213,7 @@ final class ZmqtRuntime {
     }
 
     private String poll(long deadline, int events) {
+        // Poll in short intervals to check for shutdown.
         if (stopping) return "shutdown";
         long remaining = deadline - System.nanoTime();
         if (remaining <= 0) return "timeout";
@@ -242,6 +245,7 @@ final class ZmqtRuntime {
 
     static int run(String[] args, SocketType type, String mode, List<String> activeOptions,
                    String subscription, ToIntFunction<ZmqtRuntime> behavior) {
+        // Use your application's configuration, logger, and shutdown hook here.
         var runtime = new ZmqtRuntime();
         // Keep signal callbacks separate from socket operations on the main thread.
         Signal.handle(new Signal("INT"), signal -> runtime.stopping = true);
@@ -250,19 +254,25 @@ final class ZmqtRuntime {
         try {
             config = load(args);
         } catch (IOException | IllegalArgumentException error) {
+            // Use CONFIG_ERROR when startup settings cannot be read or validated.
             runtime.log("CONFIG_ERROR", null);
             return 1;
         }
         runtime.options = config.options();
 
         int result;
+        // Socket setup, connect, and I/O failures use TRANSPORT_ERROR.
         String errorEvent = "TRANSPORT_ERROR";
         try (ZContext context = new ZContext(); ZMQ.Socket socket = context.createSocket(type)) {
             runtime.socket = socket;
             try {
+                // Apply the role's options before bind or connect.
+                // sendHwm and receiveHwm limit the number of queued messages.
                 runtime.applyOptions(activeOptions);
+                // An empty SUB prefix matches every message.
                 if (subscription != null) require(socket.subscribe(subscription));
                 if (mode.equals("bind")) {
+                    // Report a failure to open the local endpoint as BIND_ERROR.
                     errorEvent = "BIND_ERROR";
                     require(runtime.bind(config.bindHost(), config.port()));
                 } else {
@@ -276,6 +286,7 @@ final class ZmqtRuntime {
                     result = runtime.stopping ? 0 : behavior.applyAsInt(runtime);
                 }
             } finally {
+                // lingerMs limits how long pending sends can stay queued after socket close.
                 require(socket.setLinger(runtime.option("lingerMs")));
             }
         } catch (IOException | RuntimeException error) {

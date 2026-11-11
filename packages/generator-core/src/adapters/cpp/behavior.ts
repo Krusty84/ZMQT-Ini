@@ -8,6 +8,7 @@ import type {
   BehaviorNode,
   BehaviorOperation,
 } from "../../planning/ir";
+import { roleComments } from "../../templates/shared/role-comments";
 
 type Build = Extract<BehaviorOperation, { op: "build" }>;
 type Transitions = BehaviorNode["transitions"];
@@ -160,8 +161,10 @@ export function renderCppApplication(application: ApplicationPlan): string {
   const subscription = lifecycle.startup.find(
     (step) => step.op === "apply-subscription",
   );
+  const comments = roleComments[socketType];
   const cases = behavior.nodes.flatMap((node) => [
     `        if (state == ${string(node.id)}) {`,
+    ...(comments[node.id] ?? []).map((line) => `            // ${line}`),
     ...renderNode(node).map((line) => `            ${line}`),
     ...(node.operation.op === "stop" ? [] : ["            continue;"]),
     "        }",

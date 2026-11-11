@@ -42,7 +42,13 @@ Pattern definitions own ZeroMQ behavior, language adapters translate validated o
 
 ## Generated runtime
 
-The two applications use REQ/REP, PUB/SUB, or PUSH/PULL over TCP. Both read `config/zmq.json` for hosts, the port, and socket options. The [runtime templates](packages/generator-core/src/templates) handle DNS, socket setup, message exchange, and cleanup. The codecs use single-frame UTF-8 JSON. `READY` reports local socket setup. The integration runner checks delivery through a response, event, or task result.
+The two applications use REQ/REP, PUB/SUB, or PUSH/PULL over TCP. Each role's entry point passes its state machine to `run`. Both applications read `config/zmq.json` for hosts, the port, and socket options. The [runtime templates](packages/generator-core/src/templates) handle DNS, socket setup, message exchange, and cleanup. The codecs use single-frame UTF-8 JSON. `READY` reports local socket setup. The integration runner checks delivery through a response, event, or task result.
+
+### Integration comments
+
+Each adapter looks up role comments by socket type and state ID. It writes them at the start of the state branch in the target language's comment syntax. The comments show where to supply application data or call handlers. [Shared role comments](packages/generator-core/src/templates/shared/role-comments.ts)
+
+Comments in the runtime templates explain socket options, timeouts, and errors. They show where to use the application's configuration, logger, and shutdown hook.
 
 ### Generated project scripts
 
@@ -56,7 +62,9 @@ TypeScript builds the package. A [build script](packages/generator-core/scripts/
 
 The `generate` scripts require the Core build. Relative input and output paths use the caller's working directory. See the [repository README](README.md) for setup and launch commands.
 
-The [CI workflow](.github/workflows/generator-core-ci.yml) runs Core and host-parity tests on Linux. [Launcher tests](packages/generator-core/tests/unit/scripts.test.cjs) use test apps to check startup order, exit status, and cleanup. The integration job builds and runs 24 generated configurations, with two Bind orientations for each language and pattern. Golden tests compare output hashes. Architecture tests check the installed package in a restricted Node.js process. See the [package README](packages/generator-core/README.md) for commands and toolchain versions.
+The [CI workflow](.github/workflows/generator-core-ci.yml) runs Core and host-parity tests on Linux. [Launcher tests](packages/generator-core/tests/unit/scripts.test.cjs) use test apps to check startup order, exit status, and cleanup. The integration job builds and runs 24 generated configurations, with two Bind orientations for each language and pattern. Architecture tests check the installed package in a restricted Node.js process. See the [package README](packages/generator-core/README.md) for commands and toolchain versions.
+
+The manifest records the adapter's `templateVersion` and `dependencySetVersion`. Golden tests hash the manifest and generated files, including source comments. Role comment tests check that selected comments appear at the start of the expected state and in the correct role. [Manifest assembly](packages/generator-core/src/artifacts/assemble.ts), [golden tests](packages/generator-core/tests/golden/project.test.cjs), [role comment tests](packages/generator-core/tests/unit/role-comments.test.cjs)
 
 ## Known constraints
 

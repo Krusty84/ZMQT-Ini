@@ -25,7 +25,7 @@ const entryPoint = (role: string) =>
 
 export const javaAdapter: LanguageAdapter = {
   id: "java",
-  templateVersion: "1.1.0",
+  templateVersion: "1.1.2",
   dependencySetVersion: "1.0.0",
   layout: {
     entryPoint,
