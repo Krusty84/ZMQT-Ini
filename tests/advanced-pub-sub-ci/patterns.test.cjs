@@ -6,7 +6,7 @@
 const assert = require("node:assert/strict");
 const { join } = require("node:path");
 const { before, test } = require("node:test");
-const { core, projectConfig, writeProject } = require("../generated-project-ci/project.cjs");
+const { core, optionalSocketOptions, projectConfig, writeProject } = require("../generated-project-ci/project.cjs");
 const { python, run, toolchains } = require("../generated-project-ci/toolchains.cjs");
 
 const variants = [
@@ -34,8 +34,8 @@ for (const { id: language, languageVersion } of languages) {
   for (const [label, bindRole, extensions] of variants) {
     test("generated " + language + " advanced " + label, (t) => {
       const config = projectConfig(language, "pub-sub", bindRole);
-      config.schemaVersion = "1.1";
       config.messaging.extensions = extensions;
+      if (label === "all-stream") Object.assign(config.socketOptions, optionalSocketOptions);
       if (extensions.includes("clone")) config.messaging.subtree = "/stocks/";
       if (extensions.includes("binary-star")) {
         config.messaging.backup = { bindHost: "127.0.0.1", connectHost: "127.0.0.1", port: 5560 };

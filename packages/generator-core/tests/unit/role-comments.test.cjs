@@ -84,6 +84,6 @@ for (const config of projectCases) {
       );
       assert.equal(marked.length, role === "req" ? 2 : 1, path(role));
     }
-    assert.equal(result.value.manifest.templateVersion, "1.1.2");
+    assert.equal(result.value.manifest.templateVersion, "1.5.0");
   });
 }

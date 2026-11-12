@@ -3,9 +3,21 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { BasicConfig, NormalizedConfig } from "../public/types";
+import type { AdvancedConfig, BasicConfig, NormalizedConfig } from "../public/types";
 import validate, { type SchemaIssue } from "./compiled-schema.js";
-import validateAdvanced from "./compiled-schema-1.1.js";
+import validateAdvanced from "./compiled-schema-advanced.js";
+import { optionalTcpSocketOptions } from "./socket-options";
+
+export const configSchemaVersion: BasicConfig["schemaVersion"] = "2.0";
+
+export function hasExtensions(messaging: unknown): messaging is Record<string, unknown> {
+  return messaging !== null && typeof messaging === "object" && !Array.isArray(messaging) &&
+    Object.hasOwn(messaging, "extensions");
+}
+
+export function isAdvancedConfig(config: NormalizedConfig): config is AdvancedConfig {
+  return config.messaging.extensions !== undefined;
+}
 
 type SchemaResult =
   | { ok: true; value: NormalizedConfig }
@@ -13,6 +25,17 @@ type SchemaResult =
 
 function commonFields(config: NormalizedConfig): Omit<BasicConfig, "schemaVersion"> {
   const { project, messaging, socketOptions } = config;
+  const options: BasicConfig["socketOptions"] = {
+    sendHwm: socketOptions.sendHwm,
+    receiveHwm: socketOptions.receiveHwm,
+    sendTimeoutMs: socketOptions.sendTimeoutMs,
+    receiveTimeoutMs: socketOptions.receiveTimeoutMs,
+    lingerMs: socketOptions.lingerMs,
+  };
+  for (const option of optionalTcpSocketOptions("connect")) {
+    const value = socketOptions[option];
+    if (value !== undefined) Object.assign(options, { [option]: value });
+  }
   return {
     project: { name: project.name, language: project.language },
     messaging: {
@@ -23,19 +46,13 @@ function commonFields(config: NormalizedConfig): Omit<BasicConfig, "schemaVersio
       connectHost: messaging.connectHost,
       port: messaging.port,
     },
-    socketOptions: {
-      sendHwm: socketOptions.sendHwm,
-      receiveHwm: socketOptions.receiveHwm,
-      sendTimeoutMs: socketOptions.sendTimeoutMs,
-      receiveTimeoutMs: socketOptions.receiveTimeoutMs,
-      lingerMs: socketOptions.lingerMs,
-    },
+    socketOptions: options,
   };
 }
 
 export function parseConfig(input: unknown): SchemaResult {
   if (input && typeof input === "object" && !Array.isArray(input) &&
-      (input as { schemaVersion?: unknown }).schemaVersion === "1.1") {
+      hasExtensions((input as { messaging?: unknown }).messaging)) {
     if (!validateAdvanced(input)) {
       const errors = validateAdvanced.errors!;
       validateAdvanced.errors = null;
@@ -46,7 +63,7 @@ export function parseConfig(input: unknown): SchemaResult {
     return {
       ok: true,
       value: {
-        schemaVersion: "1.1",
+        schemaVersion: configSchemaVersion,
         ...common,
         messaging: {
           ...common.messaging,
@@ -68,7 +85,7 @@ export function parseConfig(input: unknown): SchemaResult {
   return {
     ok: true,
     value: {
-      schemaVersion: "1.0",
+      schemaVersion: configSchemaVersion,
       ...commonFields(input),
     },
   };

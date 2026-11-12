@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { defaultReconnectIntervalMs, socketOptionDefinitions } from "../../config/socket-options";
+
 const imports = String.raw`import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -31,9 +33,11 @@ const pollSlice = String.raw`    private static final long SLICE_NS = TimeUnit.M
 `;
 
 const configFields = String.raw`    private static final Set<String> CONFIG_FIELDS = Set.of("bindHost", "connectHost", "port", "socketOptions");
-    private static final Map<String, Integer> MAXIMUMS = Map.of(
-        "sendHwm", 1_000_000, "receiveHwm", 1_000_000,
-        "sendTimeoutMs", 600_000, "receiveTimeoutMs", 600_000, "lingerMs", 60_000
+    private record OptionRange(int minimum, int maximum, boolean required) {}
+    private static final Map<String, OptionRange> SOCKET_OPTIONS = Map.ofEntries(
+${socketOptionDefinitions.flatMap(({ name, bounds, required }) =>
+  bounds ? [`        Map.entry("${name}", new OptionRange(${bounds.minimum}, ${bounds.maximum}, ${required}))`] : []
+).join(",\n")}
     );
     private static final String IPV4 = "(?:0|[1-9][0-9]{0,2})(?:\\.(?:0|[1-9][0-9]{0,2})){3}";
 
@@ -101,6 +105,34 @@ const validation = String.raw`    private JsonNode options;
         return (int) number;
     }
 
+    private static void validateSocketOptions(JsonNode options) {
+        if (!options.isObject()) throw new IllegalArgumentException("Invalid socket options");
+        int validated = 0;
+        if (options.has("immediate")) {
+            if (!options.get("immediate").isBoolean()) throw new IllegalArgumentException("Invalid boolean option");
+            validated++;
+        }
+        for (var option : SOCKET_OPTIONS.entrySet()) {
+            var value = options.get(option.getKey());
+            var range = option.getValue();
+            if (value == null) {
+                if (range.required()) throw new IllegalArgumentException("Missing socket option");
+                continue;
+            }
+            checkInteger(value, range.minimum(), range.maximum());
+            validated++;
+        }
+        if (validated != options.size()) throw new IllegalArgumentException("Unknown socket option");
+
+        int maximum = options.has("reconnectMaxIntervalMs") ? options.get("reconnectMaxIntervalMs").intValue() : 0;
+        int initial = options.has("reconnectIntervalMs") ? options.get("reconnectIntervalMs").intValue() : ${defaultReconnectIntervalMs};
+        if (maximum > 0 && maximum < initial) throw new IllegalArgumentException("Invalid maximum reconnect interval");
+        if (options.has("heartbeatTimeoutMs") &&
+            (!options.has("heartbeatIntervalMs") || options.get("heartbeatIntervalMs").intValue() == 0)) {
+            throw new IllegalArgumentException("The heartbeat timeout requires a positive heartbeat interval");
+        }
+    }
+
 `;
 
 const singleSocketConfig = String.raw`    private static Config load(String[] args) throws IOException {
@@ -110,10 +142,7 @@ const singleSocketConfig = String.raw`    private static Config load(String[] ar
         JsonNode config = MessageCodec.decode(Files.readAllBytes(path));
         if (!exactFields(config, CONFIG_FIELDS)) throw new IllegalArgumentException("Invalid configuration");
         JsonNode options = config.get("socketOptions");
-        if (!exactFields(options, MAXIMUMS.keySet())) throw new IllegalArgumentException("Invalid socket options");
-        for (var option : MAXIMUMS.entrySet()) {
-            checkInteger(options.get(option.getKey()), option.getKey().equals("lingerMs") ? 0 : 1, option.getValue());
-        }
+        validateSocketOptions(options);
         return new Config(checkHost(config.get("bindHost"), false), checkHost(config.get("connectHost"), true),
             checkInteger(config.get("port"), 1, 65535), options);
     }
@@ -154,6 +183,12 @@ const endpoints = String.raw`    private static List<String> addresses(String ho
 
     private void applyOptions(List<String> active) {
         for (String name : active) {
+            if (!options.has(name)) continue;
+            if (name.equals("immediate")) {
+                // JeroMQ attaches the outgoing pipe early when its flag is true.
+                require(socket.setImmediate(!options.get(name).booleanValue()));
+                continue;
+            }
             int value = option(name);
             require(switch (name) {
                 case "sendHwm" -> socket.setSndHWM(value);
@@ -161,6 +196,12 @@ const endpoints = String.raw`    private static List<String> addresses(String ho
                 case "sendTimeoutMs" -> socket.setSendTimeOut(value);
                 case "receiveTimeoutMs" -> socket.setReceiveTimeOut(value);
                 case "lingerMs" -> socket.setLinger(value);
+                case "reconnectIntervalMs" -> socket.setReconnectIVL(value);
+                case "reconnectMaxIntervalMs" -> socket.setReconnectIVLMax(value);
+                case "heartbeatIntervalMs" -> socket.setHeartbeatIvl(value);
+                case "heartbeatTimeoutMs" -> socket.setHeartbeatTimeout(value);
+                case "maxFrameBytes" -> socket.setMaxMsgSize(options.get(name).longValue());
+                case "handshakeTimeoutMs" -> socket.setHandshakeIvl(value);
                 default -> throw new IllegalArgumentException("Unknown socket option");
             });
         }

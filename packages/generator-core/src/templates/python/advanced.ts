@@ -42,11 +42,7 @@ def _advanced_config(spec):
     if "subtree" in config and not _subtree(config["subtree"]):
         raise ValueError("Invalid subtree")
 
-    options = config["socketOptions"]
-    if type(options) is not dict or options.keys() != _OPTIONS.keys():
-        raise ValueError("Invalid socket options")
-    for name, (_, minimum, maximum) in _OPTIONS.items():
-        options[name] = _bounded_int(options[name], minimum, maximum)
+    _validate_socket_options(config["socketOptions"])
     return config
 
 
@@ -97,14 +93,16 @@ class _Advanced:
         sock = self.context.socket(getattr(zmq, definition["type"]))
         try:
             for name, (option, _, _) in _OPTIONS.items():
+                if name not in self.options:
+                    continue
                 if (name == "lingerMs" or (name.startswith("send") and definition["send"])
-                        or (name.startswith("receive") and definition["receive"])):
-                    sock.setsockopt(option, self.options[name])
+                        or (name.startswith("receive") and definition["receive"]) or name in definition["tcpOptions"]):
+                    sock.setsockopt(option, int(self.options[name]))
             if definition.get("verbose"):
                 sock.setsockopt(zmq.XPUB_VERBOSE, 1)
             if definition["type"] == "ROUTER":
                 sock.setsockopt(zmq.ROUTER_MANDATORY, 1)
-            if definition["name"] == "peerOut":
+            if definition["name"] == "peerOut" and "immediate" not in self.options:
                 sock.setsockopt(zmq.IMMEDIATE, 1)
             subscription = definition.get("subscriptions")
             if subscription == "all":

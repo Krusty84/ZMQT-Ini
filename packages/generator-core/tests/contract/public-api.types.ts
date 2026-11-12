@@ -55,6 +55,9 @@ type PublicApiContract = [
   Assert<Equal<typeof generateProject, CoreOperations["generateProject"]>>,
   Assert<Equal<typeof validateConfig, CoreOperations["validateConfig"]>>,
   Assert<Equal<ValidationResult, CoreResult<NormalizedConfig>>>,
+  Assert<Equal<NormalizedConfig["schemaVersion"], "2.0">>,
+  Assert<Equal<Pick<NormalizedConfig["socketOptions"], "handshakeTimeoutMs">, { handshakeTimeoutMs?: number }>>,
+  Assert<Equal<Pick<NormalizedConfig["socketOptions"], "immediate">, { immediate?: boolean }>>,
   Assert<
     Equal<
       CoreResult<NormalizedConfig>,

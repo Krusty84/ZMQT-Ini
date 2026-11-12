@@ -9,6 +9,7 @@ import type {
   BehaviorOperation,
 } from "../../planning/ir";
 import { roleComments } from "../../templates/shared/role-comments";
+import { runtimeSocketOptionNames } from "../../topology/compiler";
 
 type Build = Extract<BehaviorOperation, { op: "build" }>;
 type Transitions = BehaviorNode["transitions"];
@@ -166,12 +167,12 @@ function renderNode({ operation, transitions }: BehaviorNode): string[] {
 }
 
 export function renderJavaApplication(application: ApplicationPlan): string {
-  const { behavior, endpoint, lifecycle, options, socketType } = application;
+  const { behavior, endpoint, lifecycle, socketType } = application;
   const className = `App${socketType}`;
   const subscription = lifecycle.startup.find(
     (step) => step.op === "apply-subscription",
   );
-  const optionsList = Object.keys(options)
+  const optionsList = runtimeSocketOptionNames(application)
     .map((option) => JSON.stringify(option))
     .join(", ");
   const comments = roleComments[socketType];

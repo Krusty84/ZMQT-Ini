@@ -23,6 +23,16 @@ const orientations = [
   ["push-pull", "pull"],
 ];
 
+const optionalSocketOptions = {
+  reconnectIntervalMs: 200,
+  reconnectMaxIntervalMs: 1500,
+  heartbeatIntervalMs: 1000,
+  heartbeatTimeoutMs: 4000,
+  maxFrameBytes: 4096,
+  handshakeTimeoutMs: 1000,
+  immediate: true,
+};
+
 function projectConfig(
   language,
   pattern,
@@ -31,7 +41,7 @@ function projectConfig(
 ) {
   const [bindHost, connectHost] = hosts;
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "2.0",
     project: { name: `${language}-integration`, language },
     messaging: {
       pattern,
@@ -52,7 +62,9 @@ function projectConfig(
 }
 
 function createProject(t, language, pattern, bindRole, hosts) {
-  return writeProject(t, projectConfig(language, pattern, bindRole, hosts));
+  const config = projectConfig(language, pattern, bindRole, hosts);
+  if (bindRole === "rep") Object.assign(config.socketOptions, optionalSocketOptions);
+  return writeProject(t, config);
 }
 
 function writeProject(t, config) {
@@ -72,4 +84,4 @@ function writeProject(t, config) {
   return workspace;
 }
 
-module.exports = { core, createProject, orientations, projectConfig, writeProject };
+module.exports = { core, createProject, optionalSocketOptions, orientations, projectConfig, writeProject };

@@ -4,6 +4,8 @@
  */
 
 import { getCapabilities } from "../catalog/capabilities";
+import { configSchemaVersion, isAdvancedConfig } from "../config/schema";
+import { optionalTcpSocketOptions } from "../config/socket-options";
 import { extensionTopology } from "../patterns/pub-sub-extensions";
 import type { AdvancedConfig, Diagnostic } from "../public/types";
 import { formatEndpointUri } from "../topology/compiler";
@@ -36,6 +38,7 @@ interface SocketPlan {
   endpoint: string;
   send: boolean;
   receive: boolean;
+  tcpOptions: readonly string[];
   subscriptions?: "all" | "subtree";
   verbose?: true;
   worker?: number;
@@ -81,11 +84,12 @@ export function compilePubSub(config: AdvancedConfig, diagnostics: readonly Diag
     const group = target === "backup" ? messaging.backup! : messaging;
     const [send, receive] = directions[type];
     const host = mode === "bind" ? group.bindHost : group.connectHost;
-    return { name, type, mode, offset, target, send, receive, ...settings,
+    return { name, type, mode, offset, target, send, receive, ...settings, tcpOptions: optionalTcpSocketOptions(mode),
       endpoint: formatEndpointUri(host, group.port + offset) };
   };
   const local = (name: string, type: SocketType, mode: Mode, channel: string): SocketPlan => ({
     name, type, mode, offset: 0, target: "inproc", endpoint: `inproc://${channel}`,
+    tcpOptions: [],
     send: type === "PAIR" ? mode === "bind" : directions[type][0],
     receive: type === "PAIR" ? mode === "connect" : directions[type][1],
   });
@@ -160,9 +164,9 @@ export function compilePubSub(config: AdvancedConfig, diagnostics: readonly Diag
 export function validatePubSubPlan(plan: PubSubPlan): Diagnostic[] {
   const { name, language, pattern } = plan.project;
   const validation = validateConfig({
-    schemaVersion: "1.1", project: { name, language }, messaging: plan.messaging, socketOptions: plan.socketOptions,
+    schemaVersion: configSchemaVersion, project: { name, language }, messaging: plan.messaging, socketOptions: plan.socketOptions,
   });
-  if (validation.ok && validation.value.schemaVersion === "1.1" && pattern === "pub-sub") {
+  if (validation.ok && isAdvancedConfig(validation.value) && pattern === "pub-sub") {
     const expected = compilePubSub(validation.value, []);
     if (JSON.stringify(plan.applications) === JSON.stringify(expected.applications) &&
         JSON.stringify(plan.behavior) === JSON.stringify(expected.behavior) &&

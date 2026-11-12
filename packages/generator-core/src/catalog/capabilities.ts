@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-import schema from "../../resources/config.schema.json";
+import { configSchemaVersion } from "../config/schema";
+import { socketOptionDefinitions, socketOptionSchema } from "../config/socket-options";
 import { patternRegistry } from "../patterns/registry";
 import { extensionCombinations } from "../patterns/pub-sub-extensions";
 import type { LanguageCapabilities } from "../planning/ir";
@@ -60,14 +61,14 @@ export function p0LanguageCapabilities(): LanguageCapabilities {
     socketTypes: patterns.flatMap(({ roles }) =>
       roles.map(({ socketType }) => socketType),
     ),
-    socketOptions: Object.keys(schema.properties.socketOptions.properties),
+    socketOptions: Object.keys(socketOptionSchema.properties),
   };
 }
 
 export function getCapabilities(): CapabilityCatalog {
   return {
     catalogVersion: 1,
-    configSchemaVersion: "1.0",
+    configSchemaVersion,
     irVersion: "1.0",
     languages: languages.map((language) => ({
       ...language,
@@ -79,17 +80,14 @@ export function getCapabilities(): CapabilityCatalog {
     })),
     transports: ["tcp"],
     pubSubExtensions: {
-      configSchemaVersion: "1.1",
+      configSchemaVersion,
       irVersion: "1.1",
       languages: languages.map(({ id }) => id),
       combinations: extensionCombinations(),
     },
     socketOptionRanges: Object.fromEntries(
-      Object.entries(schema.properties.socketOptions.properties).map(
-        ([option, { minimum, maximum }]) => [
-          option,
-          { min: minimum, max: maximum },
-        ],
+      socketOptionDefinitions.flatMap(({ name, bounds }) =>
+        bounds ? [[name, { min: bounds.minimum, max: bounds.maximum }]] : [],
       ),
     ),
   };

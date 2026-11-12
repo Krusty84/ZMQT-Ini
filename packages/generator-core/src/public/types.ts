@@ -5,6 +5,7 @@
 
 type Language = "python" | "cpp" | "java" | "node";
 type Pattern = "req-rep" | "pub-sub" | "push-pull";
+type ConfigSchemaVersion = "2.0";
 
 export type PubSubExtension =
   | "espresso"
@@ -16,7 +17,7 @@ export type PubSubExtension =
 
 export interface CapabilityCatalog {
   catalogVersion: 1;
-  configSchemaVersion: "1.0";
+  configSchemaVersion: ConfigSchemaVersion;
   irVersion: "1.0";
   languages: readonly {
     id: Language;
@@ -32,7 +33,7 @@ export interface CapabilityCatalog {
   transports: readonly ["tcp"];
   socketOptionRanges: Readonly<Record<string, { min: number; max: number }>>;
   pubSubExtensions: {
-    configSchemaVersion: "1.1";
+    configSchemaVersion: ConfigSchemaVersion;
     irVersion: "1.1";
     languages: readonly Language[];
     combinations: readonly {
@@ -59,7 +60,7 @@ export type CoreResult<T> =
 export type ValidationResult = CoreResult<NormalizedConfig>;
 
 export interface BasicConfig {
-  schemaVersion: "1.0";
+  schemaVersion: ConfigSchemaVersion;
   project: {
     name: string;
     language: Language;
@@ -71,6 +72,7 @@ export interface BasicConfig {
     bindHost: string;
     connectHost: string;
     port: number;
+    extensions?: never;
   };
   socketOptions: {
     sendHwm: number;
@@ -78,12 +80,18 @@ export interface BasicConfig {
     sendTimeoutMs: number;
     receiveTimeoutMs: number;
     lingerMs: number;
+    reconnectIntervalMs?: number;
+    reconnectMaxIntervalMs?: number;
+    heartbeatIntervalMs?: number;
+    heartbeatTimeoutMs?: number;
+    maxFrameBytes?: number;
+    handshakeTimeoutMs?: number;
+    immediate?: boolean;
   };
 }
 
-export interface AdvancedConfig extends Omit<BasicConfig, "schemaVersion" | "messaging"> {
-  schemaVersion: "1.1";
-  messaging: Omit<BasicConfig["messaging"], "pattern"> & {
+export interface AdvancedConfig extends Omit<BasicConfig, "messaging"> {
+  messaging: Omit<BasicConfig["messaging"], "pattern" | "extensions"> & {
     pattern: "pub-sub";
     extensions: readonly PubSubExtension[];
     maxAgeMs?: number;
@@ -104,6 +112,7 @@ export interface GeneratedFile {
 interface ManifestFields {
   manifestVersion: 1;
   generatorVersion: string;
+  configSchemaVersion: ConfigSchemaVersion;
   language: Language;
   pattern: Pattern;
   templateVersion: string;
@@ -111,8 +120,8 @@ interface ManifestFields {
 }
 
 export type GenerationManifest = ManifestFields & (
-  | { configSchemaVersion: "1.0"; irVersion: "1.0" }
-  | { configSchemaVersion: "1.1"; irVersion: "1.1"; extensions: readonly PubSubExtension[] }
+  | { irVersion: "1.0" }
+  | { irVersion: "1.1"; extensions: readonly PubSubExtension[] }
 );
 
 export interface GeneratedProject {

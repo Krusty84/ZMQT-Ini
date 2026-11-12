@@ -14,17 +14,39 @@ if (result.ok) {
 }
 ```
 
-`getCapabilities()` returns the supported languages, patterns, bind roles, transports, and socket option ranges. `validateConfig(input)` takes a JSON data object and returns `ValidationResult`. The `ok` discriminator indicates whether `value` is available. `diagnostics` is present in both cases.
+`getCapabilities()` returns the supported languages, patterns, bind roles, transports, and numeric socket option ranges. `validateConfig(input)` takes a JSON data object and returns `ValidationResult`. The `ok` discriminator indicates whether `value` is available. `diagnostics` is present in both cases.
 
-`inspectProject(input)` returns the checked project name, language, pattern, and socket endpoints. For schema 1.1, it also returns the selected extensions and the socket name for each endpoint.
+`inspectProject(input)` returns the checked project name, language, pattern, and socket endpoints. For advanced PUB/SUB, it also returns the selected extensions and the socket name for each endpoint.
 
 `generateProject(input)` returns a versioned `manifest` and sorted `files`. The files have relative POSIX paths, UTF-8 text, and an `executable` flag for the host. The Core validates its internal plan before emission and checks the final paths, required files, and aggregate limit of 2,097,152 UTF-8 bytes.
 
-The package includes [JSON Schema v1.0](resources/config.schema.json) for basic patterns. The limit is 32,768 UTF-8 bytes of compact JSON. Supply IPv4, bare IPv6, or a DNS name without a port. Bind also accepts `*`. Connect requires a destination address.
+Set `schemaVersion` to `"2.0"`. The limit is 32,768 UTF-8 bytes of compact JSON. Supply IPv4, bare IPv6, or a DNS name without a port. Bind also accepts `*`. Connect requires a destination address. [Basic configuration schema](resources/config.schema.json)
+
+## TCP socket options
+
+Both profiles require `sendHwm`, `receiveHwm`, `sendTimeoutMs`, `receiveTimeoutMs`, and `lingerMs` in `socketOptions`. Supply the optional fields as needed. Omitted fields use the socket defaults. The same fields can be set in the generated `config/zmq.json`.
+
+| Optional field | Allowed values | Applies to |
+| --- | --- | --- |
+| `reconnectIntervalMs` | 1–600,000 ms | TCP connect sockets |
+| `reconnectMaxIntervalMs` | 0–600,000 ms | TCP connect sockets |
+| `heartbeatIntervalMs` | 0–600,000 ms | All TCP sockets |
+| `heartbeatTimeoutMs` | 0–600,000 ms | All TCP sockets |
+| `maxFrameBytes` | 1–2,147,483,647 bytes per inbound frame | All TCP sockets |
+| `handshakeTimeoutMs` | 0–600,000 ms | All TCP sockets |
+| `immediate` | `true` or `false` | TCP connect sockets |
+
+A reconnect maximum of zero disables interval growth. A positive maximum must be at least the initial interval. The initial interval defaults to 100 ms.
+
+A heartbeat interval of zero disables ZMTP PING. Set a positive interval to supply a heartbeat timeout. A timeout of zero disables the timer that closes the connection when no traffic arrives after PING.
+
+The handshake timeout limits the initial ZMTP negotiation. A value of zero disables this limit.
+
+Set `immediate` to `true` to wait for the outgoing connection before queueing messages. libzmq starts queueing after the ZMTP handshake. JeroMQ 0.6.0 starts queueing when TCP connects. A value of `false` allows queueing during connection setup. An explicit value also applies to Binary Star peer links.
 
 ## Advanced PUB/SUB
 
-Use [JSON Schema v1.1](resources/config-1.1.schema.json) with `pattern: "pub-sub"` and a nonempty `messaging.extensions` array. `getCapabilities().pubSubExtensions` lists the supported combinations and bind roles. Generation records the selection in `manifest.extensions`.
+Set `messaging.pattern` to `"pub-sub"` and supply a nonempty `messaging.extensions` array. `getCapabilities().pubSubExtensions` lists the supported combinations and bind roles. Generation records the selection in `manifest.extensions`. [Advanced configuration schema](resources/config-advanced.schema.json)
 
 | Selection | Bind role | Ports and options |
 | --- | --- | --- |
@@ -44,6 +66,7 @@ Use diagnostic `code`, `path`, and `params` for machine handling. `path` is a JS
 | `UNSUPPORTED_SCHEMA_VERSION`, `UNSUPPORTED_LANGUAGE`, `UNSUPPORTED_PATTERN`, `UNSUPPORTED_TRANSPORT` | |
 | `INVALID_PROJECT_NAME`, `PROJECT_NAME_TOO_LONG` | `maxLength` for `PROJECT_NAME_TOO_LONG` |
 | `VALUE_BELOW_MINIMUM`, `VALUE_ABOVE_MAXIMUM` | `min` or `max` |
+| `INVALID_SOCKET_OPTION_COMBINATION` | |
 | `INPUT_TOO_LARGE` | `maxBytes` |
 | `INVALID_BIND_ROLE`, `INVALID_HOST`, `UNSPECIFIED_CONNECT_HOST` | `pattern` for `INVALID_BIND_ROLE` |
 | `MISSING_EXTENSION`, `TOO_MANY_EXTENSIONS`, `UNSUPPORTED_EXTENSION`, `DUPLICATE_EXTENSION`, `INCOMPATIBLE_EXTENSIONS`, `INACTIVE_EXTENSION_OPTION`, `INVALID_SUBTREE`, `PORT_RANGE_OVERFLOW`, `OVERLAPPING_PORT_RANGES` | |

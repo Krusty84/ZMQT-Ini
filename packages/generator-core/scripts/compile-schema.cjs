@@ -8,7 +8,7 @@ const { join } = require("node:path");
 const Ajv2020 = require("ajv/dist/2020");
 const standaloneCode = require("ajv/dist/standalone");
 const schema = require("../resources/config.schema.json");
-const advanced = require("../resources/config-1.1.schema.json");
+const advanced = require("../resources/config-advanced.schema.json");
 
 const ajv = new Ajv2020({
   allErrors: true,
@@ -19,7 +19,7 @@ const ajv = new Ajv2020({
 ajv.addSchema(schema, "config.schema.json");
 for (const [name, validate] of [
   ["compiled-schema", ajv.getSchema("config.schema.json")],
-  ["compiled-schema-1.1", ajv.compile(advanced)],
+  ["compiled-schema-advanced", ajv.compile(advanced)],
 ]) {
   // JSON Schema counts Unicode code points for string length limits.
   const validator = standaloneCode(ajv, validate).replaceAll(

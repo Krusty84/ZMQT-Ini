@@ -8,6 +8,7 @@ import {
   p0LanguageCapabilities,
 } from "../catalog/capabilities";
 import { buildBehavior } from "../patterns/behavior";
+import { isAdvancedConfig } from "../config/schema";
 import { patternRegistry, type RoleDefinition } from "../patterns/registry";
 import type { BasicConfig, CoreResult, Diagnostic } from "../public/types";
 import { compileTopology, type RolePlan } from "../topology/compiler";
@@ -66,9 +67,9 @@ export function planProject(input: unknown): CoreResult<ProjectPlan> {
   const validation = validateConfig(input);
   if (!validation.ok) return validation;
 
-  const plan = validation.value.schemaVersion === "1.0"
-    ? buildPlan(validation.value, validation.diagnostics)
-    : compilePubSub(validation.value, validation.diagnostics);
+  const plan = isAdvancedConfig(validation.value)
+    ? compilePubSub(validation.value, validation.diagnostics)
+    : buildPlan(validation.value, validation.diagnostics);
   const diagnostics = plan.irVersion === "1.0" ? validatePlan(plan, p0Capabilities) : validatePubSubPlan(plan);
   if (diagnostics.length > 0) return { ok: false, diagnostics };
 

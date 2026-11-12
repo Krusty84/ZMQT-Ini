@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { defaultReconnectIntervalMs, socketOptionDefinitions, socketOptionSchema } from "../../config/socket-options";
+import { zmqOptionNames } from "../shared/zmq-option-names";
+
 const imports = String.raw`import argparse
 import ipaddress
 import json
@@ -25,12 +28,12 @@ const pollSlice = String.raw`_POLL_SLICE_MS = 50
 `;
 
 const validation = String.raw`_OPTIONS = {
-    "sendHwm": (zmq.SNDHWM, 1, 1000000),
-    "receiveHwm": (zmq.RCVHWM, 1, 1000000),
-    "sendTimeoutMs": (zmq.SNDTIMEO, 1, 600000),
-    "receiveTimeoutMs": (zmq.RCVTIMEO, 1, 600000),
-    "lingerMs": (zmq.LINGER, 0, 60000),
+${socketOptionDefinitions.map(({ name, bounds }) => {
+  const limits = bounds ? `${bounds.minimum}, ${bounds.maximum}` : "None, None";
+  return `    "${name}": (zmq.${zmqOptionNames[name]}, ${limits}),`;
+}).join("\n")}
 }
+_REQUIRED_OPTIONS = {${socketOptionSchema.required.map((name) => JSON.stringify(name)).join(", ")}}
 
 
 def _address(host):
@@ -69,6 +72,24 @@ def _bounded_int(value, minimum, maximum):
     return int(value)
 
 
+def _validate_socket_options(options):
+    if type(options) is not dict or not _REQUIRED_OPTIONS <= options.keys() <= _OPTIONS.keys():
+        raise ValueError("Invalid socket options")
+    for name, value in options.items():
+        _, minimum, maximum = _OPTIONS[name]
+        if minimum is None:
+            if type(value) is not bool:
+                raise ValueError("Invalid boolean option")
+        else:
+            options[name] = _bounded_int(value, minimum, maximum)
+
+    maximum = options.get("reconnectMaxIntervalMs", 0)
+    if 0 < maximum < options.get("reconnectIntervalMs", ${defaultReconnectIntervalMs}):
+        raise ValueError("Invalid maximum reconnect interval")
+    if "heartbeatTimeoutMs" in options and options.get("heartbeatIntervalMs", 0) == 0:
+        raise ValueError("The heartbeat timeout requires a positive heartbeat interval")
+
+
 `;
 
 const singleSocketConfig = String.raw`def _load_config():
@@ -81,11 +102,7 @@ const singleSocketConfig = String.raw`def _load_config():
     _check_host(config["connectHost"], connect=True)
     config["port"] = _bounded_int(config["port"], 1, 65535)
 
-    options = config["socketOptions"]
-    if type(options) is not dict or options.keys() != _OPTIONS.keys():
-        raise ValueError("Invalid socket options")
-    for name, (_, minimum, maximum) in _OPTIONS.items():
-        options[name] = _bounded_int(options[name], minimum, maximum)
+    _validate_socket_options(config["socketOptions"])
     return config
 
 
@@ -232,7 +249,8 @@ def run(socket_type, mode, active_options, subscription, behavior):
         # Apply the role's options before bind or connect.
         # sendHwm and receiveHwm limit the number of queued messages.
         for name in active_options:
-            sock.setsockopt(_OPTIONS[name][0], options[name])
+            if name in options:
+                sock.setsockopt(_OPTIONS[name][0], int(options[name]))
         # An empty SUB prefix matches every message.
         if subscription is not None:
             sock.setsockopt_string(zmq.SUBSCRIBE, subscription)

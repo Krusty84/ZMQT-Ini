@@ -173,7 +173,6 @@ test("Bash run stops both apps on SIGINT even if one ignores SIGTERM", { skip: w
 test("advanced Bash run cleans up when FIFO creation fails before any app starts", { skip: windows }, (t) => {
   const project = fixture(t, "rep", "", "");
   const config = structuredClone(projectCases.find(({ project }) => project.name === "node-pub-sub-pub"));
-  config.schemaVersion = "1.1";
   config.messaging.bindRole = "proxy";
   config.messaging.extensions = ["espresso"];
   const result = generateProject(config);

@@ -11,7 +11,7 @@ const { planProject } = require("../../dist/planning/build.js");
 
 function project(bindRole) {
   const plan = planProject({
-    schemaVersion: "1.0",
+    schemaVersion: "2.0",
     project: { name: "cpp-adapter-test", language: "cpp" },
     messaging: {
       pattern: "pub-sub",
@@ -70,20 +70,20 @@ test("C++ emits two virtual entry points, runtime config, and pinned C++23 build
 
   assert.match(files["app_pub.cpp"], /zmq::socket_type::pub, true/);
   assert.match(files["app_sub.cpp"], /zmq::socket_type::sub, false/);
+  const connectOptions = '"reconnectIntervalMs", "reconnectMaxIntervalMs", "immediate", ';
+  assert.ok(files["app_sub.cpp"].includes(connectOptions));
   const reversed = project("sub");
   assert.equal(
     reversed["app_pub.cpp"],
-    files["app_pub.cpp"].replace(
-      "socket_type::pub, true",
-      "socket_type::pub, false",
-    ),
+    files["app_pub.cpp"]
+      .replace("socket_type::pub, true", "socket_type::pub, false")
+      .replace('"heartbeatIntervalMs"', connectOptions + '"heartbeatIntervalMs"'),
   );
   assert.equal(
     reversed["app_sub.cpp"],
-    files["app_sub.cpp"].replace(
-      "socket_type::sub, false",
-      "socket_type::sub, true",
-    ),
+    files["app_sub.cpp"]
+      .replace("socket_type::sub, false", "socket_type::sub, true")
+      .replace(connectOptions, ""),
   );
 
   const config = JSON.parse(files["config/zmq.json"]);

@@ -65,7 +65,7 @@ jobs:
           STEPS: ${{ toJSON(steps) }}
         run: |
           {
-            echo '### Generator Core v1.1'
+            echo '### Generator Core configuration schema 2.0'
             echo
             echo "- Core Validation — $RESULT"
             echo "- Host Parity — $PARITY_RESULT"

@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { parseConfig } from "../config/schema";
+import { hasExtensions, isAdvancedConfig, parseConfig } from "../config/schema";
 import type { SchemaIssue } from "../config/compiled-schema.js";
+import { invalidSocketOptionCombinations, socketOptionSchema } from "../config/socket-options";
 import { activeSocketOptions, patternRegistry } from "../patterns/registry";
-import type { SocketOption } from "../patterns/registry";
 import { extensionCombinations, extensionTopology } from "../patterns/pub-sub-extensions";
 import type {
   AdvancedConfig,
@@ -45,9 +45,8 @@ function snapshot(input: unknown): unknown {
     const sectionData = copyRecord(data[section]);
     if (sectionData) data[section] = sectionData;
   }
-  const messaging = data.messaging as Record<string, unknown> | undefined;
-  if (data.schemaVersion === "1.1" && messaging && typeof messaging === "object" &&
-      !Array.isArray(messaging)) {
+  const messaging = data.messaging;
+  if (hasExtensions(messaging)) {
     const backup = copyRecord(messaging.backup);
     if (backup) messaging.backup = backup;
     const extensions = messaging.extensions;
@@ -247,7 +246,8 @@ function checkAdvanced(config: AdvancedConfig, diagnostics: Diagnostic[]): void 
 function checkSemantics(config: NormalizedConfig): ValidationResult {
   const { pattern, bindRole, bindHost, connectHost } = config.messaging;
   const { roles, permittedBindRoles } = patternRegistry[pattern];
-  const bindRoles = config.schemaVersion === "1.1"
+  const advanced = isAdvancedConfig(config);
+  const bindRoles = advanced
     ? extensionTopology(config.messaging.extensions).bindRoles : permittedBindRoles;
   const diagnostics = checkHosts(bindHost, connectHost, "/messaging");
   if (!bindRoles.includes(bindRole)) {
@@ -259,7 +259,15 @@ function checkSemantics(config: NormalizedConfig): ValidationResult {
       params: { pattern },
     });
   }
-  if (config.schemaVersion === "1.1") checkAdvanced(config, diagnostics);
+  if (advanced) checkAdvanced(config, diagnostics);
+  for (const { option, message } of invalidSocketOptionCombinations(config.socketOptions)) {
+    diagnostics.push({
+      severity: "error",
+      code: "INVALID_SOCKET_OPTION_COMBINATION",
+      path: `/socketOptions/${option}`,
+      message,
+    });
+  }
   if (diagnostics.some(({ severity }) => severity === "error")) {
     return { ok: false, diagnostics: sortDiagnostics(diagnostics.filter(({ severity }) => severity === "error")) };
   }
@@ -280,15 +288,14 @@ function checkSemantics(config: NormalizedConfig): ValidationResult {
       message: "Close can discard unsent messages when linger is zero.",
     });
   }
-  if (config.schemaVersion === "1.1") {
+  if (advanced) {
     const { messaging } = config;
     if (messaging.extensions.includes("suicidal-snail")) messaging.maxAgeMs ??= 1000;
     if (messaging.extensions.includes("clone")) messaging.subtree ??= "";
   }
-  const configuredOptions = Object.keys(config.socketOptions) as SocketOption[];
-  for (const role of config.schemaVersion === "1.0" ? roles : []) {
-    const active = activeSocketOptions(role);
-    for (const option of configuredOptions) {
+  for (const role of advanced ? [] : roles) {
+    const active: readonly string[] = activeSocketOptions(role);
+    for (const option of socketOptionSchema.required) {
       if (!active.includes(option)) {
         diagnostics.push({
           severity: "warning",

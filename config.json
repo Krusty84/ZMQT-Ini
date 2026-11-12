@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "2.0",
   "project": {
     "name": "python-req-rep",
     "language": "python"
@@ -17,6 +17,13 @@
     "receiveHwm": 50,
     "sendTimeoutMs": 2500,
     "receiveTimeoutMs": 2000,
-    "lingerMs": 25
+    "lingerMs": 25,
+    "reconnectIntervalMs": 200,
+    "reconnectMaxIntervalMs": 1500,
+    "heartbeatIntervalMs": 1000,
+    "heartbeatTimeoutMs": 4000,
+    "maxFrameBytes": 4096,
+    "handshakeTimeoutMs": 1000,
+    "immediate": true
   }
 }

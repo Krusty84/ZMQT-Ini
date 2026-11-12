@@ -32,11 +32,7 @@ export const javaAdvanced = String.raw`
         if (spec.get("program").asString().startsWith("clone")) fields.add("subtree");
         if (spec.has("binaryStarTransitions")) fields.add("backup");
         if (!exactFields(config, fields)) throw new IllegalArgumentException("Invalid configuration");
-        var options = config.get("socketOptions");
-        if (!exactFields(options, MAXIMUMS.keySet())) throw new IllegalArgumentException("Invalid socket options");
-        for (var option : MAXIMUMS.entrySet()) {
-            checkInteger(options.get(option.getKey()), option.getKey().equals("lingerMs") ? 0 : 1, option.getValue());
-        }
+        validateSocketOptions(config.get("socketOptions"));
         var groups = new ArrayList<>(List.of(config));
         if (config.has("backup")) {
             if (!exactFields(config.get("backup"), Set.of("bindHost", "connectHost", "port")))
@@ -135,10 +131,10 @@ export const javaAdvanced = String.raw`
                 var options = new ArrayList<>(List.of("lingerMs"));
                 if (definition.get("send").booleanValue()) options.addAll(List.of("sendHwm", "sendTimeoutMs"));
                 if (definition.get("receive").booleanValue()) options.addAll(List.of("receiveHwm", "receiveTimeoutMs"));
+                for (var option : definition.get("tcpOptions")) options.add(option.asString());
                 transport.applyOptions(options);
                 if (definition.has("verbose")) require(socket.setXpubVerbose(definition.get("verbose").booleanValue()));
                 if (type == SocketType.ROUTER) require(socket.setRouterMandatory(true));
-                if (definition.get("name").asString().equals("peerOut")) require(socket.setImmediate(true));
                 var subscription = definition.has("subscriptions") ? definition.get("subscriptions").asString() : "";
                 if (subscription.equals("all")) require(socket.subscribe(""));
                 if (subscription.equals("subtree")) {

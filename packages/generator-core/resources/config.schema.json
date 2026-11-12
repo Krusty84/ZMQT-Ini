@@ -4,7 +4,7 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "project", "messaging", "socketOptions"],
   "properties": {
-    "schemaVersion": { "const": "1.0" },
+    "schemaVersion": { "const": "2.0" },
     "project": {
       "type": "object",
       "additionalProperties": false,
@@ -40,7 +40,14 @@
         "receiveHwm": { "type": "integer", "minimum": 1, "maximum": 1000000 },
         "sendTimeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
         "receiveTimeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
-        "lingerMs": { "type": "integer", "minimum": 0, "maximum": 60000 }
+        "lingerMs": { "type": "integer", "minimum": 0, "maximum": 60000 },
+        "reconnectIntervalMs": { "type": "integer", "minimum": 1, "maximum": 600000, "$comment": "optional" },
+        "reconnectMaxIntervalMs": { "type": "integer", "minimum": 0, "maximum": 600000, "$comment": "optional" },
+        "heartbeatIntervalMs": { "type": "integer", "minimum": 0, "maximum": 600000, "$comment": "optional" },
+        "heartbeatTimeoutMs": { "type": "integer", "minimum": 0, "maximum": 600000, "$comment": "optional" },
+        "maxFrameBytes": { "type": "integer", "minimum": 1, "maximum": 2147483647, "$comment": "optional" },
+        "handshakeTimeoutMs": { "type": "integer", "minimum": 0, "maximum": 600000, "$comment": "optional" },
+        "immediate": { "type": "boolean", "$comment": "optional" }
       }
     }
   }

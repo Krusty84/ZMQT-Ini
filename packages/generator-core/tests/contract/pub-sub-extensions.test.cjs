@@ -11,7 +11,7 @@ const { validatePubSubPlan } = require("../../dist/planning/pub-sub");
 
 function config(extensions, bindRole = "proxy", language = "python") {
   return {
-    schemaVersion: "1.1",
+    schemaVersion: "2.0",
     project: { name: "advanced-example", language },
     messaging: {
       pattern: "pub-sub", transport: "tcp", bindRole,
@@ -27,7 +27,7 @@ function config(extensions, bindRole = "proxy", language = "python") {
 test("advertises and generates all 80 advanced PUB/SUB configurations", () => {
   const catalog = getCapabilities().pubSubExtensions;
   assert.deepEqual(catalog.languages, ["python", "cpp", "java", "node"]);
-  assert.equal(catalog.configSchemaVersion, "1.1");
+  assert.equal(catalog.configSchemaVersion, "2.0");
   assert.equal(catalog.irVersion, "1.1");
   const stream = ["black-box", "espresso", "last-value-caching", "suicidal-snail"];
   const expected = new Map([["clone", ["server"]], ["binary-star,clone", ["server"]]]);
@@ -49,9 +49,9 @@ test("advertises and generates all 80 advanced PUB/SUB configurations", () => {
         assert.deepEqual(summary.value.extensions, extensions);
         assert.ok(summary.value.roles.every(({ socket, endpoint }) => socket && /^(tcp|inproc):\/\//.test(endpoint)));
         assert.deepEqual(output.value.manifest.extensions, extensions);
-        assert.equal(output.value.manifest.configSchemaVersion, "1.1");
+        assert.equal(output.value.manifest.configSchemaVersion, "2.0");
         assert.equal(output.value.manifest.irVersion, "1.1");
-        assert.equal(output.value.manifest.templateVersion, "1.2.0");
+        assert.equal(output.value.manifest.templateVersion, "1.5.0");
         checked++;
       }
     }
@@ -77,6 +77,14 @@ test("plans each TCP and inproc socket with its role and endpoint", () => {
   const stream = inspectProject(config(["espresso", "black-box"])).value;
   assert.deepEqual(stream.roles.filter(({ endpoint }) => endpoint.startsWith("inproc")).map(({ socketType }) => socketType),
     ["PAIR", "PAIR", "PUSH", "PULL", "PULL"]);
+  const streamPlan = planProject(config(["espresso", "black-box"])).value;
+  for (const { target, mode, tcpOptions } of streamPlan.applications.flatMap(({ sockets }) => sockets)) {
+    const expected = target === "inproc" ? [] : [
+      "heartbeatIntervalMs", "heartbeatTimeoutMs", "maxFrameBytes", "handshakeTimeoutMs",
+    ];
+    if (target !== "inproc" && mode === "connect") expected.unshift("reconnectIntervalMs", "reconnectMaxIntervalMs", "immediate");
+    assert.deepEqual(tcpOptions, expected);
+  }
   const plan = structuredClone(planProject(input).value);
   plan.applications[0].sockets.pop();
   assert.equal(validatePubSubPlan(plan)[0].code, "IR_INVALID_TOPOLOGY");
@@ -123,7 +131,9 @@ test("rejects invalid extensions, settings, and TCP port ranges", () => {
       "OVERLAPPING_PORT_RANGES", "/messaging/backup/port"],
     [{ ...star, messaging: { ...star.messaging, backup: { ...star.messaging.backup, connectHost: "*" } } },
       "UNSPECIFIED_CONNECT_HOST", "/messaging/backup/connectHost"],
-    [{ ...clone, schemaVersion: "1.0" }, "UNKNOWN_FIELD", "/messaging/extensions"],
+    [{ ...clone, schemaVersion: "1.0" }, "UNSUPPORTED_SCHEMA_VERSION", "/schemaVersion"],
+    [{ ...clone, schemaVersion: "1.1" }, "UNSUPPORTED_SCHEMA_VERSION", "/schemaVersion"],
+    [{ ...clone, messaging: { ...clone.messaging, pattern: "req-rep" } }, "UNSUPPORTED_PATTERN", "/messaging/pattern"],
   ];
   for (const [input, code, path] of cases) {
     const result = validateConfig(input);

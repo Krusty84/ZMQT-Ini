@@ -14,7 +14,7 @@ const { planProject } = require("../../dist/planning/build.js");
 
 function projectPlan(adapter, pattern = "req-rep", bindRole = "rep") {
   const result = planProject({
-    schemaVersion: "1.0",
+    schemaVersion: "2.0",
     project: { name: "output-validator-test", language: adapter.id },
     messaging: {
       pattern,

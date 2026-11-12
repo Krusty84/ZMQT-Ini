@@ -10,6 +10,7 @@ import type {
   JsonValue,
 } from "../../planning/ir";
 import { roleComments } from "../../templates/shared/role-comments";
+import { runtimeSocketOptionNames } from "../../topology/compiler";
 
 type Build = Extract<BehaviorOperation, { op: "build" }>;
 type Transitions = BehaviorNode["transitions"];
@@ -160,7 +161,7 @@ function renderNode({ operation, transitions }: BehaviorNode): string[] {
 }
 
 export function renderPythonApplication(application: ApplicationPlan): string {
-  const { behavior, socketType, endpoint, options, lifecycle } = application;
+  const { behavior, socketType, endpoint, lifecycle } = application;
   const subscription = lifecycle.startup.find(
     (step) => step.op === "apply-subscription",
   );
@@ -189,7 +190,7 @@ export function renderPythonApplication(application: ApplicationPlan): string {
     "    raise SystemExit(run(",
     `        ${JSON.stringify(socketType)},`,
     `        ${JSON.stringify(endpoint.mode)},`,
-    `        ${pythonLiteral(Object.keys(options))},`,
+    `        ${pythonLiteral(runtimeSocketOptionNames(application))},`,
     `        ${pythonLiteral(subscription?.prefix ?? null)},`,
     "        behavior,",
     "    ))",

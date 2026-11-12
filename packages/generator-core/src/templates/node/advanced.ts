@@ -25,9 +25,8 @@ async function loadAdvancedConfig(spec) {
   if (spec.timed) fields.push("maxAgeMs");
   if (spec.program.startsWith("clone")) fields.push("subtree");
   if (spec.binaryStarTransitions) fields.push("backup");
-  if (!hasKeys(config, fields) || !hasKeys(config.socketOptions, Object.keys(options))) {
-    throw new Error("Invalid runtime configuration");
-  }
+  if (!hasKeys(config, fields)) throw new Error("Invalid runtime configuration");
+  validateSocketOptions(config.socketOptions);
   const groups = [config];
   if (spec.binaryStarTransitions) {
     if (!hasKeys(config.backup, ["bindHost", "connectHost", "port"])) throw new Error("Invalid backup");
@@ -37,9 +36,6 @@ async function loadAdvancedConfig(spec) {
     validateHost(group.bindHost, false);
     validateHost(group.connectHost, true);
     if (!boundedInt(group.port, 1, 65536 - spec.portCount)) throw new Error("Invalid port");
-  }
-  for (const [name, [, min, max]] of Object.entries(options)) {
-    if (!boundedInt(config.socketOptions[name], min, max)) throw new Error("Invalid socket option");
   }
   if (spec.timed && !boundedInt(config.maxAgeMs, 1, 600000)) throw new Error("Invalid maxAgeMs");
   if (Object.hasOwn(config, "subtree") && !validSubtree(config.subtree)) throw new Error("Invalid subtree");
@@ -101,9 +97,10 @@ class AdvancedRuntime {
         socket.receiveHighWaterMark = this.options.receiveHwm;
         socket.receiveTimeout = 0;
       }
+      applySocketOptions(socket, this.options, definition.tcpOptions);
       if (definition.verbose) socket.verbosity = "allSubs";
       if (definition.type === "ROUTER") socket.mandatory = true;
-      if (name === "peerOut") socket.immediate = true;
+      if (name === "peerOut" && !Object.hasOwn(this.options, "immediate")) socket.immediate = true;
       if (definition.subscriptions === "all") socket.subscribe();
       if (definition.subscriptions === "subtree") {
         socket.subscribe(this.config.subtree);

@@ -73,7 +73,7 @@ test("packed Core installs and runs in a read-only, restricted Node app", (t) =>
   for (const path of [
     "LICENSE",
     schemaPath,
-    "resources/config-1.1.schema.json",
+    "resources/config-advanced.schema.json",
     "dist/index.js",
     "dist/index.d.ts",
     ...buildFiles,
@@ -131,7 +131,7 @@ test("packed Core installs and runs in a read-only, restricted Node app", (t) =>
     const core = require(name);
     assert.deepEqual(Object.keys(core).sort(), ["generateProject", "getCapabilities", "inspectProject", "validateConfig"]);
     const config = {
-      schemaVersion: "1.0",
+      schemaVersion: "2.0",
       project: { name: "standalone-host", language: "python" },
       messaging: {
         pattern: "req-rep", transport: "tcp", bindRole: "rep",
@@ -151,7 +151,7 @@ test("packed Core installs and runs in a read-only, restricted Node app", (t) =>
     assert.equal(project.ok, true, JSON.stringify(project.diagnostics));
     assert.ok(project.value.files.some(({ path }) => path === "config/zmq.json"));
     const advanced = core.generateProject({
-      ...config, schemaVersion: "1.1",
+      ...config,
       messaging: { ...config.messaging, pattern: "pub-sub", bindRole: "proxy", extensions: ["espresso"] },
     });
     assert.equal(advanced.ok, true, JSON.stringify(advanced.diagnostics));

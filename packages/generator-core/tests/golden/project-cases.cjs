@@ -12,7 +12,7 @@ const projectCases = languages.flatMap(
       .filter(({ id }) => supported.includes(id))
       .flatMap(({ id: pattern, bindRoles }) =>
         bindRoles.map((bindRole) => ({
-          schemaVersion: "1.0",
+          schemaVersion: "2.0",
           project: { name: `${language}-${pattern}-${bindRole}`, language },
           messaging: {
             pattern,

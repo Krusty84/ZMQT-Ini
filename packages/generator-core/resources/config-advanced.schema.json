@@ -4,7 +4,7 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "project", "messaging", "socketOptions"],
   "properties": {
-    "schemaVersion": { "const": "1.1" },
+    "schemaVersion": { "$ref": "config.schema.json#/properties/schemaVersion" },
     "project": { "$ref": "config.schema.json#/properties/project" },
     "socketOptions": { "$ref": "config.schema.json#/properties/socketOptions" },
     "messaging": {

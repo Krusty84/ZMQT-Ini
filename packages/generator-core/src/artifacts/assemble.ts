@@ -7,6 +7,7 @@ import generator from "../../package.json";
 import type { LanguageAdapter } from "../adapters/types";
 import { generateAdvancedDocsAndTest, generateAdvancedSources } from "../adapters/advanced";
 import { getCapabilities } from "../catalog/capabilities";
+import { configSchemaVersion } from "../config/schema";
 import { validatePubSubPlan, type ProjectPlan } from "../planning/pub-sub";
 import { validatePlan } from "../planning/validate";
 import type { CoreResult, Diagnostic, GeneratedProject } from "../public/types";
@@ -81,13 +82,14 @@ export function assembleProject(
     value: {
       manifest: {
         manifestVersion: 1,
+        configSchemaVersion,
         ...(plan.irVersion === "1.0"
-          ? { configSchemaVersion: "1.0", irVersion: "1.0" } as const
-          : { configSchemaVersion: "1.1", irVersion: "1.1", extensions: plan.messaging.extensions } as const),
+          ? { irVersion: "1.0" } as const
+          : { irVersion: "1.1", extensions: plan.messaging.extensions } as const),
         generatorVersion: generator.version,
         language: plan.project.language,
         pattern: plan.project.pattern,
-        templateVersion: plan.irVersion === "1.0" ? adapter.templateVersion : "1.2.0",
+        templateVersion: adapter.templateVersion,
         dependencySetVersion: adapter.dependencySetVersion,
       },
       files,

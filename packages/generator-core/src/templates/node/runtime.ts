@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { defaultReconnectIntervalMs, socketOptionDefinitions, socketOptionSchema } from "../../config/socket-options";
+
 const imports = String.raw`import { lookup } from "node:dns/promises";
 import { readFile } from "node:fs/promises";
 import { isIP } from "node:net";
@@ -19,13 +21,28 @@ const constructors = {
 };
 `;
 
-const validation = String.raw`const options = {
-  sendHwm: ["sendHighWaterMark", 1, 1000000],
-  receiveHwm: ["receiveHighWaterMark", 1, 1000000],
-  sendTimeoutMs: ["sendTimeout", 1, 600000],
-  receiveTimeoutMs: ["receiveTimeout", 1, 600000],
-  lingerMs: ["linger", 0, 60000],
+const nodeOptionNames = {
+  sendHwm: "sendHighWaterMark",
+  receiveHwm: "receiveHighWaterMark",
+  sendTimeoutMs: "sendTimeout",
+  receiveTimeoutMs: "receiveTimeout",
+  lingerMs: "linger",
+  reconnectIntervalMs: "reconnectInterval",
+  reconnectMaxIntervalMs: "reconnectMaxInterval",
+  heartbeatIntervalMs: "heartbeatInterval",
+  heartbeatTimeoutMs: "heartbeatTimeout",
+  maxFrameBytes: "maxMessageSize",
+  handshakeTimeoutMs: "handshakeInterval",
+  immediate: "immediate",
 };
+
+const validation = String.raw`const options = {
+${socketOptionDefinitions.map(({ name, bounds }) => {
+  const args = bounds ? `, ${bounds.minimum}, ${bounds.maximum}` : "";
+  return `  ${name}: ["${nodeOptionNames[name]}"${args}],`;
+}).join("\n")}
+};
+const requiredOptions = ${JSON.stringify(socketOptionSchema.required)};
 
 function hasKeys(value, keys) {
   return value !== null && typeof value === "object" && !Array.isArray(value) &&
@@ -54,6 +71,32 @@ function boundedInt(value, minimum, maximum) {
   return Number.isInteger(value) && minimum <= value && value <= maximum;
 }
 
+function validateSocketOptions(values) {
+  if (values === null || typeof values !== "object" || Array.isArray(values) ||
+      !requiredOptions.every(name => Object.hasOwn(values, name))) {
+    throw new Error("Invalid socket options");
+  }
+  for (const [name, value] of Object.entries(values)) {
+    if (!Object.hasOwn(options, name)) throw new Error("Unknown socket option");
+    const [, minimum, maximum] = options[name];
+    const valid = minimum === undefined ? typeof value === "boolean" : boundedInt(value, minimum, maximum);
+    if (!valid) throw new Error("Invalid socket option");
+  }
+  const { reconnectIntervalMs, reconnectMaxIntervalMs, heartbeatIntervalMs, heartbeatTimeoutMs } = values;
+  if (reconnectMaxIntervalMs > 0 && reconnectMaxIntervalMs < (reconnectIntervalMs ?? ${defaultReconnectIntervalMs})) {
+    throw new Error("Invalid maximum reconnect interval");
+  }
+  if (heartbeatTimeoutMs !== undefined && (heartbeatIntervalMs ?? 0) === 0) {
+    throw new Error("The heartbeat timeout requires a positive heartbeat interval");
+  }
+}
+
+function applySocketOptions(socket, values, activeOptions) {
+  for (const name of activeOptions) {
+    if (Object.hasOwn(values, name)) socket[options[name][0]] = values[name];
+  }
+}
+
 `;
 
 const singleSocketConfig = String.raw`async function loadConfig() {
@@ -64,14 +107,12 @@ const singleSocketConfig = String.raw`async function loadConfig() {
   const configPath = args[1] ?? new URL("./config/zmq.json", import.meta.url);
   const config = decode(await readFile(configPath));
   if (!hasKeys(config, ["bindHost", "connectHost", "port", "socketOptions"]) ||
-      !boundedInt(config.port, 1, 65535) || !hasKeys(config.socketOptions, Object.keys(options))) {
+      !boundedInt(config.port, 1, 65535)) {
     throw new Error("Invalid runtime configuration");
   }
   validateHost(config.bindHost, false);
   validateHost(config.connectHost, true);
-  for (const [name, [, minimum, maximum]] of Object.entries(options)) {
-    if (!boundedInt(config.socketOptions[name], minimum, maximum)) throw new Error("Invalid socket option");
-  }
+  validateSocketOptions(config.socketOptions);
   return config;
 }
 
@@ -183,7 +224,7 @@ export async function run(socketType, mode, activeOptions, subscription, behavio
     runtime.socket = socket;
     // Apply the role's options before bind or connect.
     // sendHwm and receiveHwm limit the number of queued messages.
-    for (const name of activeOptions) socket[options[name][0]] = config.socketOptions[name];
+    applySocketOptions(socket, config.socketOptions, activeOptions);
     // An empty SUB prefix matches every message.
     if (subscription !== null) socket.subscribe(subscription);
     if (mode === "bind") {

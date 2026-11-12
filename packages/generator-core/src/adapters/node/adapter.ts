@@ -52,7 +52,7 @@ const lockedModules = {
 
 export const nodeAdapter: LanguageAdapter = {
   id: "node",
-  templateVersion: "1.1.2",
+  templateVersion: "1.5.0",
   dependencySetVersion: "1.0.0",
   layout: {
     entryPoint,

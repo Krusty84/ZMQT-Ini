@@ -17,7 +17,7 @@ const entryPoint = (role: string) => `app_${role}.cpp`;
 
 export const cppAdapter: LanguageAdapter = {
   id: "cpp",
-  templateVersion: "1.1.2",
+  templateVersion: "1.5.0",
   dependencySetVersion: "1.0.0",
   layout: {
     entryPoint,

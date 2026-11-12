@@ -5,6 +5,7 @@
 
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
+const { join } = require("node:path");
 const { before, test } = require("node:test");
 
 const { core, createProject, orientations } = require("./project.cjs");
@@ -38,6 +39,15 @@ for (const [pattern, bindRole] of orientations) {
       timeout: 25_000,
       encoding: "utf8",
     });
+    if (bindRole === "rep") {
+      for (const [script, role] of [["strict_rep.py", "rep"], ["immediate.py", "req"]]) {
+        execFileSync(python, [join(__dirname, script), python, `app_${role}.py`], {
+          cwd,
+          timeout: 35_000,
+          encoding: "utf8",
+        });
+      }
+    }
   });
 }
 

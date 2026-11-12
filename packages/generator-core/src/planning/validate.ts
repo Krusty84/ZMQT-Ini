@@ -13,6 +13,7 @@ import {
 import type { Diagnostic } from "../public/types";
 import { sortDiagnostics } from "../validation/diagnostics";
 import { formatEndpointUri, type RolePlan } from "../topology/compiler";
+import { invalidSocketOptionCombinations, optionalTcpSocketOptions } from "../config/socket-options";
 import { buildLifecycle, type LifecyclePlan } from "../topology/lifecycle";
 import { classifyHost } from "../validation/hosts";
 import type { GenerationPlan, LanguageCapabilities } from "./ir";
@@ -84,10 +85,11 @@ function checkOptions(
   capabilities: LanguageCapabilities,
   report: Report,
 ): void {
-  const active = activeSocketOptions(role);
+  const required = activeSocketOptions(role);
+  const active = [...required, ...optionalTcpSocketOptions(application.endpoint.mode)];
   const ranges = getCapabilities().socketOptionRanges;
   const options = Object.entries(application.options);
-  for (const option of active) {
+  for (const option of required) {
     if (!Object.hasOwn(application.options, option)) {
       report(
         "IR_MISSING_SOCKET_OPTION",
@@ -113,8 +115,14 @@ function checkOptions(
       );
       continue;
     }
+    if (option === "immediate") {
+      if (typeof value !== "boolean") {
+        report("IR_INVALID_SOCKET_OPTION", optionPath, "The socket option must be a boolean.");
+      }
+      continue;
+    }
     const { min, max } = ranges[option];
-    if (!Number.isInteger(value) || value < min || value > max) {
+    if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
       report(
         "IR_INVALID_SOCKET_OPTION",
         optionPath,
@@ -122,6 +130,9 @@ function checkOptions(
         { min, max },
       );
     }
+  }
+  for (const { option, message } of invalidSocketOptionCombinations(application.options)) {
+    report("IR_INVALID_SOCKET_OPTION", `${path}/${option}`, message);
   }
 }
 

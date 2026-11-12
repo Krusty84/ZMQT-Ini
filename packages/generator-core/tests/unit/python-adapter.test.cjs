@@ -11,7 +11,7 @@ const { planProject } = require("../../dist/planning/build.js");
 
 function pythonPlan() {
   const result = planProject({
-    schemaVersion: "1.0",
+    schemaVersion: "2.0",
     project: { name: "python-adapter-test", language: "python" },
     messaging: {
       pattern: "req-rep",

@@ -6,9 +6,9 @@
 import type { AdvancedConfig } from "../public/types";
 import type { SchemaIssue } from "./compiled-schema.js";
 
-declare const validate: {
+declare const validateAdvanced: {
   (input: unknown): input is AdvancedConfig;
   errors?: readonly SchemaIssue[] | null;
 };
 
-export default validate;
+export default validateAdvanced;

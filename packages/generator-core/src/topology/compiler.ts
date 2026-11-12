@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { optionalTcpSocketOptions, socketOptionSchema } from "../config/socket-options";
 import { activeSocketOptions, patternRegistry } from "../patterns/registry";
 import type { RoleDefinition, SocketType } from "../patterns/registry";
 import type { NormalizedConfig } from "../public/types";
@@ -35,6 +36,11 @@ export function formatEndpointUri(host: string, port: number): string {
   return `tcp://${uriHost}:${port}`;
 }
 
+export function runtimeSocketOptionNames({ options, endpoint }: RolePlan): readonly string[] {
+  const required = Object.keys(options).filter((option) => socketOptionSchema.required.includes(option));
+  return [...required, ...optionalTcpSocketOptions(endpoint.mode)];
+}
+
 export function compileTopology(config: NormalizedConfig): TopologyPlan {
   const { pattern, transport, bindRole, bindHost, connectHost, port } =
     config.messaging;
@@ -53,8 +59,10 @@ export function compileTopology(config: NormalizedConfig): TopologyPlan {
     const options: SocketOptionsPlan = {
       lingerMs: config.socketOptions.lingerMs,
     };
-    for (const option of activeSocketOptions(role))
-      options[option] = config.socketOptions[option];
+    for (const option of [...activeSocketOptions(role), ...optionalTcpSocketOptions(mode)]) {
+      const value = config.socketOptions[option];
+      if (value !== undefined) Object.assign(options, { [option]: value });
+    }
 
     return { role: role.id, socketType: role.socketType, endpoint, options };
   }

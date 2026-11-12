@@ -64,10 +64,7 @@ Json load_advanced(int argc, char* argv[], const Json& spec) {
     }
     auto& data = *parsed;
     auto& options = data.at("socketOptions");
-    if (!options.is_object() || options.size() != std::size(socket_options))
-        throw std::invalid_argument("Invalid socket options");
-    for (const auto& option : socket_options)
-        options[option.name] = bounded_int(options.at(option.name), option.minimum, option.maximum);
+    validate_socket_options(options);
     const int max_port = 65536 - spec.at("portCount").get<int>();
     data["port"] = advanced_endpoint(data, max_port, options).port;
     if (data.contains("backup")) {
@@ -162,18 +159,21 @@ public:
             {"DEALER", zmq::socket_type::dealer},
         };
         zmq::socket_t socket(context, types.at(definition.at("type").get<std::string>()));
+        const auto tcp_options = definition.at("tcpOptions").get<std::vector<std::string>>();
         for (const auto& option : socket_options) {
+            const auto value = options.find(option.name);
+            if (value == options.end()) continue;
             const std::string_view name = option.name;
             if (name == "lingerMs" || (name.starts_with("send") && definition.at("send").get<bool>()) ||
-                (name.starts_with("receive") && definition.at("receive").get<bool>())) {
-                const int value = options.at(name).get<int>();
-                if (zmq_setsockopt(socket.handle(), option.zmq_option, &value, sizeof(value)) != 0)
-                    throw zmq::error_t();
+                (name.starts_with("receive") && definition.at("receive").get<bool>()) ||
+                std::find(tcp_options.begin(), tcp_options.end(), option.name) != tcp_options.end()) {
+                apply_socket_option(socket, option, *value);
             }
         }
         if (definition.value("verbose", false)) socket.set(zmq::sockopt::xpub_verbose, 1);
         if (definition.at("type") == "ROUTER") socket.set(zmq::sockopt::router_mandatory, 1);
-        if (definition.at("name") == "peerOut") socket.set(zmq::sockopt::immediate, 1);
+        if (definition.at("name") == "peerOut" && !options.contains("immediate"))
+            socket.set(zmq::sockopt::immediate, 1);
         const auto subscription = definition.value("subscriptions", "");
         if (subscription == "all") socket.set(zmq::sockopt::subscribe, "");
         if (subscription == "subtree") {

@@ -45,6 +45,9 @@ int run(int argc, char* argv[], zmq::socket_type socket_type, bool binds,
 } // namespace zmqt
 `;
 
+import { defaultReconnectIntervalMs, socketOptionDefinitions } from "../../config/socket-options";
+import { zmqOptionNames } from "../shared/zmq-option-names";
+
 const validation = String.raw`#include "zmqt_runtime.hpp"
 
 #include <algorithm>
@@ -52,11 +55,13 @@ const validation = String.raw`#include "zmqt_runtime.hpp"
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <stdexcept>
 #include <thread>
@@ -75,19 +80,23 @@ volatile std::sig_atomic_t stopping = 0;
 
 void stop(int) { stopping = 1; }
 
-struct Option {
-    const char* name;
-    int zmq_option;
+struct OptionRange {
     int minimum;
     int maximum;
 };
 
+struct Option {
+    const char* name;
+    int zmq_option;
+    std::optional<OptionRange> range;
+    bool required;
+};
+
 constexpr Option socket_options[] = {
-    {"sendHwm", ZMQ_SNDHWM, 1, 1000000},
-    {"receiveHwm", ZMQ_RCVHWM, 1, 1000000},
-    {"sendTimeoutMs", ZMQ_SNDTIMEO, 1, 600000},
-    {"receiveTimeoutMs", ZMQ_RCVTIMEO, 1, 600000},
-    {"lingerMs", ZMQ_LINGER, 0, 60000},
+${socketOptionDefinitions.map(({ name, bounds, required }) => {
+  const range = bounds ? `OptionRange{${bounds.minimum}, ${bounds.maximum}}` : "std::nullopt";
+  return `    {"${name}", ZMQ_${zmqOptionNames[name]}, ${range}, ${required}},`;
+}).join("\n")}
 };
 
 struct Config {
@@ -148,6 +157,39 @@ int bounded_int(const Json& value, int minimum, int maximum) {
     return static_cast<int>(number);
 }
 
+void validate_socket_options(Json& options) {
+    if (!options.is_object()) throw std::invalid_argument("Invalid socket options");
+    std::size_t validated = 0;
+    for (const auto& option : socket_options) {
+        const auto value = options.find(option.name);
+        if (value == options.end()) {
+            if (option.required) throw std::invalid_argument("Missing socket option");
+            continue;
+        }
+        if (option.range) *value = bounded_int(*value, option.range->minimum, option.range->maximum);
+        else if (!value->is_boolean()) throw std::invalid_argument("Invalid boolean option");
+        ++validated;
+    }
+    if (validated != options.size()) throw std::invalid_argument("Unknown socket option");
+
+    const int maximum = options.value("reconnectMaxIntervalMs", 0);
+    if (maximum > 0 && maximum < options.value("reconnectIntervalMs", ${defaultReconnectIntervalMs})) {
+        throw std::invalid_argument("Invalid maximum reconnect interval");
+    }
+    if (options.contains("heartbeatTimeoutMs") && options.value("heartbeatIntervalMs", 0) == 0) {
+        throw std::invalid_argument("The heartbeat timeout requires a positive heartbeat interval");
+    }
+}
+
+void apply_socket_option(zmq::socket_t& socket, const Option& option, const Json& value) {
+    if (option.zmq_option == ZMQ_MAXMSGSIZE) {
+        socket.set(zmq::sockopt::maxmsgsize, value.get<std::int64_t>());
+        return;
+    }
+    const int number = value.is_boolean() ? static_cast<int>(value.get<bool>()) : value.get<int>();
+    if (zmq_setsockopt(socket.handle(), option.zmq_option, &number, sizeof(number)) != 0) throw zmq::error_t();
+}
+
 `;
 
 const singleSocketConfig = String.raw`Config load_config(int argc, char* argv[]) {
@@ -163,12 +205,7 @@ const singleSocketConfig = String.raw`Config load_config(int argc, char* argv[])
                   bounded_int(data->at("port"), 1, 65535), data->at("socketOptions")};
     check_host(config.bind_host, false);
     check_host(config.connect_host, true);
-    if (!config.options.is_object() || config.options.size() != std::size(socket_options)) {
-        throw std::invalid_argument("Invalid socket options");
-    }
-    for (const auto& option : socket_options) {
-        config.options.at(option.name) = bounded_int(config.options.at(option.name), option.minimum, option.maximum);
-    }
+    validate_socket_options(config.options);
     return config;
 }
 
@@ -342,8 +379,8 @@ int run(int argc, char* argv[], zmq::socket_type socket_type, bool binds,
         // sendHwm and receiveHwm limit the number of queued messages.
         for (const auto& option : socket_options) {
             if (std::find(active_options.begin(), active_options.end(), option.name) == active_options.end()) continue;
-            const int value = config.options.at(option.name).get<int>();
-            if (zmq_setsockopt(socket.handle(), option.zmq_option, &value, sizeof(value)) != 0) throw zmq::error_t();
+            const auto value = config.options.find(option.name);
+            if (value != config.options.end()) apply_socket_option(socket, option, *value);
         }
         // An empty SUB prefix matches every message.
         if (subscription) socket.set(zmq::sockopt::subscribe, std::string(*subscription));

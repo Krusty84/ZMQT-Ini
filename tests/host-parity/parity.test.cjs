@@ -139,8 +139,10 @@ test("CLI prints a text summary with the absolute output path", (t) => {
 
 test("Core, CLI and Web generate the same advanced PUB/SUB project", async (t) => {
   const config = projectConfig("python", "pub-sub", "proxy");
-  config.schemaVersion = "1.1";
   config.messaging.extensions = ["last-value-caching", "espresso"];
+  Object.assign(config.socketOptions, {
+    reconnectMaxIntervalMs: 0, maxFrameBytes: 4096, handshakeTimeoutMs: 1000, immediate: false,
+  });
   const direct = core.generateProject(config);
   assert.equal(direct.ok, true);
   const workspace = setup(t, config);
@@ -159,7 +161,6 @@ test("Core, CLI and Web generate the same advanced PUB/SUB project", async (t) =
 
 test("Core, CLI and Web reject the same incompatible PUB/SUB extensions", async (t) => {
   const config = projectConfig("node", "pub-sub", "server");
-  config.schemaVersion = "1.1";
   config.messaging.extensions = ["clone", "black-box"];
   const direct = core.generateProject(config);
   assert.equal(direct.ok, false);

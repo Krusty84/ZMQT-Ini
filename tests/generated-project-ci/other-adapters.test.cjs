@@ -9,10 +9,10 @@ const { core, createProject, orientations } = require("./project.cjs");
 
 const { python, run, toolchains } = require("./toolchains.cjs");
 const catalog = core.getCapabilities();
-const repCommands = {
-  node: ["node", "app_rep.mjs"],
-  java: ["java", "-cp", "target/zmqt-apps-jar-with-dependencies.jar", "AppREP"],
-  cpp: ["build/app_rep"],
+const appCommands = {
+  node: (role) => ["node", `app_${role}.mjs`],
+  java: (role) => ["java", "-cp", "target/zmqt-apps-jar-with-dependencies.jar", `App${role.toUpperCase()}`],
+  cpp: (role) => [`build/app_${role}`],
 };
 
 for (const [language, prepare] of Object.entries(toolchains)) {
@@ -25,13 +25,9 @@ for (const [language, prepare] of Object.entries(toolchains)) {
       const env = prepare(cwd, languageVersion);
       run(python, ["tests/integration_test.py"], cwd, env, 25_000);
       if (bindRole === "rep") {
-        run(
-          python,
-          [join(__dirname, "strict_rep.py"), ...repCommands[language]],
-          cwd,
-          env,
-          35_000,
-        );
+        for (const [script, role] of [["strict_rep.py", "rep"], ["immediate.py", "req"]]) {
+          run(python, [join(__dirname, script), ...appCommands[language](role)], cwd, env, 35_000);
+        }
       }
     });
   }

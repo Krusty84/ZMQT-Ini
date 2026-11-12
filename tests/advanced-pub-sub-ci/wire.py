@@ -22,6 +22,8 @@ import zmq
 
 smoke = runpy.run_path("tests/integration_test.py")
 Project, free_ports, commands = (smoke[name] for name in ("Project", "free_ports", "COMMANDS"))
+strict_rep = Path(__file__).resolve().parents[1] / "generated-project-ci" / "strict_rep.py"
+socket_option_checks = runpy.run_path(str(strict_rep))
 runtime_path = Path("config/zmq.json")
 config = json.loads(runtime_path.read_text(encoding="utf-8"))
 port_count = smoke["PORT_COUNT"]
@@ -83,6 +85,15 @@ def last_value(project, context, timed):
     producer = socket(context, zmq.XPUB, 0)
     observer = socket(context, zmq.SUB, 1, subscribe=b"")
     assert receive(producer) == [b"\1"]
+    if timed:
+        socket_option_checks["check_handshake_timeout"](config["port"])
+        limit = config["socketOptions"]["maxFrameBytes"]
+        oversized = json.dumps({"id": "oversized", "type": "event", "payload": "x" * limit}).encode()
+        producer.send_multipart([b"quotes/oversized", struct.pack("!Q", time.time_ns() // 1_000_000), oversized])
+        assert not observer.poll(1000), "Proxy forwarded an oversized frame"
+        producer.close()
+        producer = socket(context, zmq.XPUB, 0)
+        assert receive(producer) == [b"\1"]
     old = time.time_ns() // 1_000_000 - 60_000 if timed else None
     for frames in (stream(b"quotes/ask", "old", old),
                    stream(b"quotes/ask", "latest", old),
@@ -253,12 +264,32 @@ def fixture():
             project.close()
 
 
+def binary_star_immediate():
+    peer_offset = config["backup"]["port"] + 3 - config["port"]
+    for immediate in (True, False):
+        with fixture() as (project, context):
+            settings = dict(config, socketOptions=config["socketOptions"] | {"immediate": immediate})
+            project.config.write_text(json.dumps(settings), encoding="utf-8")
+            project.start("server")
+            # The server sends a STATE each second while the peer is unavailable.
+            time.sleep(2.2)
+            peer = socket(context, zmq.ROUTER, peer_offset, bind=True)
+            assert receive(peer)[1] == b"STATE"
+            queued = bool(peer.poll(250))
+            assert queued == (not immediate), (immediate, queued)
+
+
 def main(variant):
+    if variant == "all-stream":
+        command = [sys.executable if part == "python" else part for part in commands["proxy"]]
+        socket_option_checks["check_invalid_socket_options"](command)
     if variant == "clone":
         for check in (generated_clone_server, generated_clone_client):
             with fixture() as (project, context):
                 check(project, context)
         return
+    if variant == "binary-star":
+        binary_star_immediate()
     with fixture() as (project, context):
         if variant == "espresso":
             espresso(project, context)

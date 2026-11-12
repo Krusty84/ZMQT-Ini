@@ -5,7 +5,7 @@
 ZMQT-Ini is a project initializer for ZeroMQ applications, not a messaging server or broker. Its goal is to turn a declarative JSON configuration into a small, runnable, understandable project with correct ZeroMQ topology, socket lifecycle, message handling, dependencies, tests, and documentation. Generated code must remain usable and editable without ZMQT-Ini.
 The long-term goal is one reusable generation engine with multiple independent clients: a CLI (already present), a possible VS Code extension, and a possible Web application/API. New clients must not duplicate the rules for ZeroMQ or the code-generation logic.
 
-The independent TypeScript/Node.js package @zmqt-ini/generator-core implements the business logic for Python, C++, Java, and Node.js. Schema 1.0 selects REQ/REP, PUB/SUB, or PUSH/PULL over TCP with two applications and single-frame UTF-8 JSON. Schema 1.1 selects advanced PUB/SUB extensions. Generated projects include runtime configuration, pinned dependencies, build instructions, tests, and a README.
+The independent TypeScript/Node.js package @zmqt-ini/generator-core implements the business logic for Python, C++, Java, and Node.js. Schema 2.0 selects basic REQ/REP, PUB/SUB, or PUSH/PULL over TCP with two applications and single-frame UTF-8 JSON. The presence of `messaging.extensions` selects advanced PUB/SUB. Generated projects include runtime configuration, pinned dependencies, build instructions, tests, and a README.
 
 The public API is getCapabilities(), validateConfig(), inspectProject(), and generateProject(). Calls are synchronous. Core returns diagnostics and an in-memory GeneratedProject (manifest plus virtual files), it does not write files, create ZIP archives, start processes, make network calls, or depend on UI frameworks. Those operations belong to clients/hosts.
 
@@ -34,7 +34,7 @@ Pattern definitions own ZeroMQ behavior, language adapters translate validated o
 4. [generateProject](packages/generator-core/src/public/generate.ts) selects a built-in [language adapter](packages/generator-core/src/adapters). The [assembler](packages/generator-core/src/artifacts/assemble.ts) checks the plan against the adapter's capabilities. The adapter renders behavior graphs as state machines and emits runtime code, codecs, build files, scripts, tests, and the README.
 5. The assembler normalizes line endings, sorts paths, and runs the [Output Validator](packages/generator-core/src/artifacts/validate.ts). The validator checks required paths, executable flags, runtime configuration, source markers, dependency declarations, and size.
 
-For schema 1.1, the [PUB/SUB planner](packages/generator-core/src/planning/pub-sub.ts) records the applications in launch order, names each socket, and defines the Binary Star transitions. The [advanced source renderer](packages/generator-core/src/adapters/advanced.ts) emits those plans and the native runtime for the selected language.
+For advanced PUB/SUB, the planner records the applications in launch order, names each socket, and defines the Binary Star transitions. The renderer emits those plans and the native runtime for the selected language. [PUB/SUB planner](packages/generator-core/src/planning/pub-sub.ts) · [Advanced source renderer](packages/generator-core/src/adapters/advanced.ts)
 
 ## Key design decisions
 
@@ -45,6 +45,8 @@ For schema 1.1, the [PUB/SUB planner](packages/generator-core/src/planning/pub-s
 ## Generated runtime
 
 Each application reads `config/zmq.json` for TCP endpoints and socket options. The [runtime templates](packages/generator-core/src/templates) handle DNS, socket setup, message exchange, and cleanup. Advanced PUB/SUB uses multipart topic and event messages. Clone uses the [12/CHP](https://rfc.zeromq.org/spec/12/) frames for snapshots and binary values. `READY` reports local socket setup.
+
+Both profiles share one socket option schema. Core assigns optional reconnect settings to TCP connect sockets and heartbeat and frame limits to all TCP sockets. The runtimes apply configured values before opening each endpoint. [Socket option rules](packages/generator-core/src/config/socket-options.ts)
 
 ### Integration comments
 

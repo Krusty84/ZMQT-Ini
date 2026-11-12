@@ -20,7 +20,7 @@ const patterns = [
 
 function config(language, pattern, bindRole) {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "2.0",
     project: { name: "inspection", language },
     messaging: {
       pattern,

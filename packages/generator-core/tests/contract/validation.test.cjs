@@ -5,11 +5,12 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { getCapabilities, validateConfig } = require("@zmqt-ini/generator-core");
+const { generateProject, getCapabilities, validateConfig } = require("@zmqt-ini/generator-core");
+const schema = require("../../resources/config.schema.json");
 
 function config() {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "2.0",
     project: { name: "example-project", language: "node" },
     messaging: {
       pattern: "req-rep",
@@ -48,7 +49,7 @@ test("catalog pins versions and matches all 24 supported configurations", () => 
   const catalog = getCapabilities();
   assert.deepEqual(
     [catalog.catalogVersion, catalog.configSchemaVersion, catalog.irVersion],
-    [1, "1.0", "1.0"],
+    [1, "2.0", "1.0"],
   );
   assert.deepEqual(catalog.transports, ["tcp"]);
   assert.deepEqual(
@@ -128,11 +129,9 @@ test("rejects missing and unknown fields, unsupported IDs, and numeric strings",
     rejects(input, "UNKNOWN_FIELD", `/${section}/foo~0~1bar`);
   }
   rejects({ ...config(), extra: true }, "UNKNOWN_FIELD", "/extra");
-  rejects(
-    { ...config(), schemaVersion: "1.2" },
-    "UNSUPPORTED_SCHEMA_VERSION",
-    "/schemaVersion",
-  );
+  for (const schemaVersion of ["1.0", "1.1", "1.2"]) {
+    rejects({ ...config(), schemaVersion }, "UNSUPPORTED_SCHEMA_VERSION", "/schemaVersion");
+  }
   const input = config();
   delete input.schemaVersion;
   rejects(input, "MISSING_FIELD", "/schemaVersion");
@@ -178,12 +177,19 @@ test("validates names, integer bounds, and compact UTF-8 byte length", () => {
     sendTimeoutMs: { min: 1, max: 600_000 },
     receiveTimeoutMs: { min: 1, max: 600_000 },
     lingerMs: { min: 0, max: 60_000 },
+    reconnectIntervalMs: { min: 1, max: 600_000 },
+    reconnectMaxIntervalMs: { min: 0, max: 600_000 },
+    heartbeatIntervalMs: { min: 0, max: 600_000 },
+    heartbeatTimeoutMs: { min: 0, max: 600_000 },
+    maxFrameBytes: { min: 1, max: 2_147_483_647 },
+    handshakeTimeoutMs: { min: 0, max: 600_000 },
   });
   for (const [field, { min, max }] of Object.entries({
     ...ranges,
     port: { min: 1, max: 65535 },
   })) {
     const input = config();
+    if (field === "heartbeatTimeoutMs") input.socketOptions.heartbeatIntervalMs = 1000;
     const section = field === "port" ? "messaging" : "socketOptions";
     const path = `/${section}/${field}`;
     for (const valid of [min, max]) {
@@ -194,7 +200,7 @@ test("validates names, integer bounds, and compact UTF-8 byte length", () => {
     rejects(input, "VALUE_BELOW_MINIMUM", path);
     input[section][field] = max + 1;
     rejects(input, "VALUE_ABOVE_MAXIMUM", path);
-    for (const invalid of [1.5, Infinity, NaN, "1"]) {
+    for (const invalid of [1.5, Infinity, NaN, "1", null]) {
       input[section][field] = invalid;
       rejects(input, "INVALID_TYPE", path);
     }
@@ -209,6 +215,58 @@ test("validates names, integer bounds, and compact UTF-8 byte length", () => {
   rejects(sized, "INVALID_HOST", "/messaging/connectHost");
   sized.messaging.connectHost += "a";
   rejects(sized, "INPUT_TOO_LARGE", "");
+});
+
+test("validates and preserves optional TCP settings in both profiles", () => {
+  const optional = {
+    reconnectIntervalMs: 200, reconnectMaxIntervalMs: 0,
+    heartbeatIntervalMs: 1000, heartbeatTimeoutMs: 0, maxFrameBytes: 4096,
+    handshakeTimeoutMs: 0, immediate: false,
+  };
+  const socketOptions = schema.properties.socketOptions;
+  for (const name of Object.keys(optional)) {
+    assert.equal(socketOptions.properties[name].$comment, "optional");
+    assert.ok(!socketOptions.required.includes(name));
+  }
+
+  for (const advanced of [false, true]) {
+    const input = config();
+    if (advanced) Object.assign(input.messaging, { pattern: "pub-sub", bindRole: "proxy", extensions: ["espresso"] });
+    for (const immediate of [0, 1, "true", null]) {
+      rejects({ ...input, socketOptions: { ...input.socketOptions, immediate } },
+        "INVALID_TYPE", "/socketOptions/immediate");
+    }
+    for (const settings of [{}, optional, { immediate: true }]) {
+      const candidate = { ...input, socketOptions: { ...input.socketOptions, ...settings } };
+      const result = validateConfig(candidate);
+      assert.equal(result.ok, true, JSON.stringify(result.diagnostics));
+      assert.deepEqual(result.value.socketOptions, candidate.socketOptions);
+      const generated = generateProject(candidate);
+      assert.equal(generated.ok, true, JSON.stringify(generated.diagnostics));
+      const runtime = generated.value.files.find(({ path }) => path === "config/zmq.json");
+      assert.deepEqual(JSON.parse(runtime.content).socketOptions, candidate.socketOptions);
+      candidate.socketOptions = Object.fromEntries(Object.entries(candidate.socketOptions).reverse());
+      assert.deepEqual(generateProject(candidate), generated);
+    }
+  }
+});
+
+test("validates dependent socket options in both profiles", () => {
+  for (const advanced of [false, true]) {
+    const input = config();
+    if (advanced) Object.assign(input.messaging, { pattern: "pub-sub", bindRole: "proxy", extensions: ["espresso"] });
+    for (const [settings, field] of [
+      [{ reconnectMaxIntervalMs: 99 }, "reconnectMaxIntervalMs"],
+      [{ reconnectIntervalMs: 200, reconnectMaxIntervalMs: 199 }, "reconnectMaxIntervalMs"],
+      [{ heartbeatTimeoutMs: 1000 }, "heartbeatTimeoutMs"],
+      [{ heartbeatIntervalMs: 0, heartbeatTimeoutMs: 0 }, "heartbeatTimeoutMs"],
+    ]) {
+      rejects({ ...input, socketOptions: { ...input.socketOptions, ...settings } },
+        "INVALID_SOCKET_OPTION_COMBINATION", `/socketOptions/${field}`);
+    }
+    Object.assign(input.socketOptions, { reconnectMaxIntervalMs: 100, heartbeatIntervalMs: 0 });
+    assert.equal(validateConfig(input).ok, true);
+  }
 });
 
 test("validates endpoints and emits sorted warnings with role parameters", () => {

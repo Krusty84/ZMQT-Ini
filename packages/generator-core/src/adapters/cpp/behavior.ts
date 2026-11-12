@@ -9,6 +9,7 @@ import type {
   BehaviorOperation,
 } from "../../planning/ir";
 import { roleComments } from "../../templates/shared/role-comments";
+import { runtimeSocketOptionNames } from "../../topology/compiler";
 
 type Build = Extract<BehaviorOperation, { op: "build" }>;
 type Transitions = BehaviorNode["transitions"];
@@ -157,7 +158,7 @@ function renderNode({ operation, transitions }: BehaviorNode): string[] {
 }
 
 export function renderCppApplication(application: ApplicationPlan): string {
-  const { behavior, socketType, endpoint, options, lifecycle } = application;
+  const { behavior, socketType, endpoint, lifecycle } = application;
   const subscription = lifecycle.startup.find(
     (step) => step.op === "apply-subscription",
   );
@@ -195,7 +196,7 @@ export function renderCppApplication(application: ApplicationPlan): string {
     "",
     "int main(int argc, char* argv[]) {",
     `    return run(argc, argv, zmq::socket_type::${socketType.toLowerCase()}, ${endpoint.mode === "bind"},`,
-    `               {${Object.keys(options).map(string).join(", ")}}, ${subscription ? string(subscription.prefix) : "std::nullopt"}, behavior);`,
+    `               {${runtimeSocketOptionNames(application).map(string).join(", ")}}, ${subscription ? string(subscription.prefix) : "std::nullopt"}, behavior);`,
     "}",
     "",
   ].join("\n");

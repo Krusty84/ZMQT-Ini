@@ -6,7 +6,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { patternRegistry } = require("../../dist/patterns/registry.js");
-const { compileTopology } = require("../../dist/topology/compiler.js");
+const { compileTopology, runtimeSocketOptionNames } = require("../../dist/topology/compiler.js");
 const { buildLifecycle } = require("../../dist/topology/lifecycle.js");
 const { validateConfig } = require("../../dist/validation/config.js");
 
@@ -40,7 +40,7 @@ for (const [pattern, roles] of Object.entries(cases)) {
   for (const [bindRole] of roles) {
     test(`${pattern} with ${bindRole} binding preserves both roles and their active options`, () => {
       const result = validateConfig({
-        schemaVersion: "1.0",
+        schemaVersion: "2.0",
         project: { name: "topology-test", language: "python" },
         messaging: {
           pattern,
@@ -79,9 +79,32 @@ for (const [pattern, roles] of Object.entries(cases)) {
   }
 }
 
+test("scopes optional TCP settings to the correct roles", () => {
+  const common = { heartbeatIntervalMs: 1000, heartbeatTimeoutMs: 0, handshakeTimeoutMs: 1000 };
+  const connectOnly = { reconnectIntervalMs: 200, reconnectMaxIntervalMs: 0, immediate: false };
+  const result = validateConfig({
+    schemaVersion: "2.0",
+    project: { name: "topology-test", language: "node" },
+    messaging: {
+      pattern: "req-rep", transport: "tcp", bindRole: "rep",
+      bindHost: "127.0.0.1", connectHost: "127.0.0.1", port: 5555,
+    },
+    socketOptions: { ...socketOptions, ...common, ...connectOnly },
+  });
+  assert.equal(result.ok, true);
+  const [request, reply] = compileTopology(result.value).roles;
+  assert.deepEqual(request.options, { ...socketOptions, ...common, ...connectOnly });
+  assert.deepEqual(reply.options, { ...socketOptions, ...common });
+  assert.ok(runtimeSocketOptionNames(request).includes("maxFrameBytes"));
+  assert.ok(runtimeSocketOptionNames(reply).includes("maxFrameBytes"));
+  assert.ok(!runtimeSocketOptionNames(reply).includes("reconnectIntervalMs"));
+  assert.ok(runtimeSocketOptionNames(request).includes("immediate"));
+  assert.ok(!runtimeSocketOptionNames(reply).includes("immediate"));
+});
+
 test("formats bind wildcard and connect DNS hosts without IPv6 brackets", () => {
   const result = validateConfig({
-    schemaVersion: "1.0",
+    schemaVersion: "2.0",
     project: { name: "topology-test", language: "node" },
     messaging: {
       pattern: "req-rep",

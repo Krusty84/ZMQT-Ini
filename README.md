@@ -37,7 +37,13 @@ bash scripts/setup.sh
 
 ### Generate a project
 
-Use a UTF-8 JSON file that follows the [configuration schema](packages/generator-core/resources/config.schema.json). Choose a new output directory with an existing parent. Relative paths use your current directory. Run these commands from the repository root to generate the example in `out`.
+Start with the `config.json` in the repository root. It uses schema `2.0` and configures Python REQ/REP over TCP on `127.0.0.1:5555`. Edit this file for your project. [Starter config](config.json)
+
+- Set the project name and language in `project`.
+- Set the pattern, bind role, hosts, and port in `messaging`.
+- Keep `sendHwm`, `receiveHwm`, `sendTimeoutMs`, `receiveTimeoutMs`, and `lingerMs` in `socketOptions`. The other socket options in the starter are optional. [Socket options reference](packages/generator-core/README.md#tcp-socket-options)
+
+Choose a new output directory with an existing parent. Relative paths use your current directory. Run the command for your platform from the repository root to generate the project in `out`.
 
 **Windows PowerShell**
 
@@ -55,7 +61,7 @@ The CLI prints a project summary to standard output and sends errors and warning
 
 ### Select advanced PUB/SUB patterns
 
-Copy `config.json`, set `schemaVersion` to `"1.1"`, and replace its `messaging` object. This example enables tracing and caching on a proxy.
+Replace the `messaging` object in `config.json` with the example below to enable tracing and caching on a PUB/SUB proxy.
 
 ```json
 {

@@ -24,12 +24,12 @@ const capabilities = {
     "stop",
   ],
   socketTypes: ["REQ", "REP", "PUB", "SUB", "PUSH", "PULL"],
-  socketOptions: Object.keys(getCapabilities().socketOptionRanges),
+  socketOptions: [...Object.keys(getCapabilities().socketOptionRanges), "immediate"],
 };
 
 function plan(pattern = "req-rep", bindRole = "rep") {
   const result = planProject({
-    schemaVersion: "1.0",
+    schemaVersion: "2.0",
     project: { name: "ir-test", language: "python" },
     messaging: {
       pattern,
@@ -297,7 +297,13 @@ test("requires topology consistency, applicable options and unconditional cleanu
 
   const inactiveOption = plan("pub-sub", "pub");
   inactiveOption.applications[0].options.receiveHwm = 1;
-  rejects(inactiveOption, "IR_INACTIVE_SOCKET_OPTION");
+  inactiveOption.applications[0].options.immediate = true;
+  rejects(inactiveOption, "IR_INACTIVE_SOCKET_OPTION", "/applications/0/options/receiveHwm");
+  rejects(inactiveOption, "IR_INACTIVE_SOCKET_OPTION", "/applications/0/options/immediate");
+
+  const invalidImmediate = plan();
+  invalidImmediate.applications[0].options.immediate = 1;
+  rejects(invalidImmediate, "IR_INVALID_SOCKET_OPTION", "/applications/0/options/immediate");
 
   const startup = plan("pub-sub", "sub");
   const sub = startup.applications[1];
