@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "2.0",
+  "project": {
+    "name": "python-push-pull-workers-json",
+    "language": "python"
+  },
+  "messaging": {
+    "pattern": "push-pull",
+    "transport": "tcp",
+    "bindRole": "push",
+    "bindHost": "127.0.0.1",
+    "connectHost": "127.0.0.1",
+    "port": 5569,
+    "serialization": "json"
+  },
+  "socketOptions": {
+    "sendHwm": 50,
+    "receiveHwm": 50,
+    "sendTimeoutMs": 2500,
+    "receiveTimeoutMs": 2000,
+    "lingerMs": 25
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "2.0",
+  "project": {
+    "name": "python-req-rep-timeout-json",
+    "language": "python"
+  },
+  "messaging": {
+    "pattern": "req-rep",
+    "transport": "tcp",
+    "bindRole": "rep",
+    "bindHost": "127.0.0.1",
+    "connectHost": "127.0.0.1",
+    "port": 5571,
+    "serialization": "json"
+  },
+  "socketOptions": {
+    "sendHwm": 50,
+    "receiveHwm": 50,
+    "sendTimeoutMs": 500,
+    "receiveTimeoutMs": 500,
+    "lingerMs": 25,
+    "immediate": true
+  }
+}

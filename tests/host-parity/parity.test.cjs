@@ -167,7 +167,16 @@ for (const [label, pattern, bindRole, serialization] of [
   });
 }
 
-for (const name of ["req-rep-cbor", "push-pull-json", "pub-sub-cache-cbor", "clone-binary-star"]) {
+for (const name of [
+  "req-rep-cbor",
+  "push-pull-json",
+  "pub-sub-cache-cbor",
+  "clone-binary-star",
+  "req-rep-handler-json",
+  "push-pull-workers-json",
+  "pub-sub-json",
+  "req-rep-timeout-json",
+]) {
   test(`CLI generates the Python example ${name}`, (t) => {
     const input = join(pythonExamples, `${name}.json`);
     const config = JSON.parse(readFileSync(input, "utf8"));
@@ -182,6 +191,7 @@ for (const name of ["req-rep-cbor", "push-pull-json", "pub-sub-cache-cbor", "clo
     const runtime = JSON.parse(readFileSync(join(output, "config/zmq.json"), "utf8"));
     assert.equal(runtime.port, config.messaging.port);
     assert.deepEqual(runtime.backup, config.messaging.backup);
+    assert.equal(runtime.socketOptions.immediate, config.socketOptions.immediate);
     assert.ok(existsSync(join(output, "tests/integration_test.py")));
   });
 }
@@ -193,6 +203,20 @@ test("CLI rejects overlapping port ranges in the Python Binary Star example", (t
   const result = runJsonCli(workspace);
   assert.equal(result.status, 1, result.stderr);
   assert.ok(JSON.parse(result.stderr).diagnostics.some(({ code }) => code === "OVERLAPPING_PORT_RANGES"));
+  assert.equal(existsSync(workspace.output), false);
+});
+
+test("CLI rejects a non-boolean immediate in the Python timeout example", (t) => {
+  const input = join(pythonExamples, "req-rep-timeout-json.json");
+  const config = JSON.parse(readFileSync(input, "utf8"));
+  config.socketOptions.immediate = "true";
+  const workspace = setup(t, config);
+  const result = runJsonCli(workspace);
+  assert.equal(result.status, 1, result.stderr);
+  assert.deepEqual(
+    JSON.parse(result.stderr).diagnostics.map(({ code, path }) => ({ code, path })),
+    [{ code: "INVALID_TYPE", path: "/socketOptions/immediate" }],
+  );
   assert.equal(existsSync(workspace.output), false);
 });
 

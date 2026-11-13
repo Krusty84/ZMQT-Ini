@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "2.0",
+  "project": {
+    "name": "python-pub-sub-json",
+    "language": "python"
+  },
+  "messaging": {
+    "pattern": "pub-sub",
+    "transport": "tcp",
+    "bindRole": "pub",
+    "bindHost": "127.0.0.1",
+    "connectHost": "127.0.0.1",
+    "port": 5570,
+    "serialization": "json"
+  },
+  "socketOptions": {
+    "sendHwm": 50,
+    "receiveHwm": 50,
+    "sendTimeoutMs": 2500,
+    "receiveTimeoutMs": 2000,
+    "lingerMs": 25
+  }
+}
