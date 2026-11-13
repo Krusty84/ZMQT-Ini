@@ -88,6 +88,7 @@ export interface ProjectSpec {
   name: string;
   language: NormalizedConfig["project"]["language"];
   pattern: NormalizedConfig["messaging"]["pattern"];
+  serialization?: "cbor";
 }
 
 export interface DependencySpec {

@@ -135,11 +135,11 @@ const validation = String.raw`    private JsonNode options;
 
 `;
 
-const singleSocketConfig = String.raw`    private static Config load(String[] args) throws IOException {
+const singleSocketConfig = (cbor: boolean) => String.raw`    private static Config load(String[] args) throws IOException {
         Path path = Path.of("config", "zmq.json");
         if (args.length == 2 && args[0].equals("--config")) path = Path.of(args[1]);
         else if (args.length != 0) throw new IllegalArgumentException("Expected --config PATH");
-        JsonNode config = MessageCodec.decode(Files.readAllBytes(path));
+        JsonNode config = MessageCodec.${cbor ? "decodeJson" : "decode"}(Files.readAllBytes(path));
         if (!exactFields(config, CONFIG_FIELDS)) throw new IllegalArgumentException("Invalid configuration");
         JsonNode options = config.get("socketOptions");
         validateSocketOptions(options);
@@ -209,13 +209,13 @@ const endpoints = String.raw`    private static List<String> addresses(String ho
 
 `;
 
-const singleSocketMessages = String.raw`    String nextId() {
+const singleSocketMessages = (cbor: boolean) => String.raw`    String nextId() {
         String prefix = runId == null || runId.isEmpty() ? "msg" : runId;
         return prefix + "-" + String.format(Locale.ROOT, "%04d", ++sequence);
     }
 
     JsonNode examplePayload(boolean includeRunId) {
-        var payload = MessageCodec.object().put("value", 42);
+        var payload = ${cbor ? "MessageCodec.telemetryPayload()" : 'MessageCodec.object().put("value", 42)'};
         if (includeRunId && runId != null && !runId.isEmpty()) payload.put("runId", runId);
         return payload;
     }
@@ -362,7 +362,7 @@ const singleSocketRuntime = String.raw`    String send(byte[] frame) {
 }
 `;
 
-export const javaRuntime =
+export const javaRuntime = (cbor: boolean) =>
   imports +
   pollSlice +
   configFields +
@@ -370,9 +370,9 @@ export const javaRuntime =
   socketField +
   singleSocketPoller +
   validation +
-  singleSocketConfig +
+  singleSocketConfig(cbor) +
   endpoints +
-  singleSocketMessages +
+  singleSocketMessages(cbor) +
   logging +
   singleSocketRuntime;
 

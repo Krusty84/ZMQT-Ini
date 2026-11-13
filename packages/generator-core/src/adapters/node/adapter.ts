@@ -8,8 +8,10 @@ import {
   getCapabilities,
   p0LanguageCapabilities,
 } from "../../catalog/capabilities";
-import { nodeCodec } from "../../templates/node/codec";
+import { cborLockPackages } from "../../templates/node/cbor-lock";
+import { renderNodeCodec } from "../../templates/node/codec";
 import { nodeRuntime } from "../../templates/node/runtime";
+import { cborReadme } from "../../templates/shared/cbor";
 import { renderIntegrationTest } from "../../templates/shared/integration";
 import { renderScripts, scriptUsage } from "../../templates/shared/scripts";
 import type { LanguageAdapter } from "../types";
@@ -66,16 +68,17 @@ export const nodeAdapter: LanguageAdapter = {
   },
   capabilities: p0LanguageCapabilities,
   generate(plan) {
+    const cbor = plan.project.serialization === "cbor";
     return [
       ...plan.applications.map((application) =>
         textFile(
           entryPoint(application.role),
-          renderNodeApplication(application),
+          renderNodeApplication(application, cbor),
           true,
         ),
       ),
-      textFile("message_codec.mjs", nodeCodec),
-      textFile("zmqt_runtime.mjs", nodeRuntime),
+      textFile("message_codec.mjs", renderNodeCodec(cbor)),
+      textFile("zmqt_runtime.mjs", nodeRuntime(cbor)),
     ];
   },
   generateBuildFiles(plan) {
@@ -100,7 +103,11 @@ export const nodeAdapter: LanguageAdapter = {
       name,
       lockfileVersion: 3,
       requires: true,
-      packages: { "": { name, dependencies, engines }, ...lockedModules },
+      packages: {
+        "": { name, dependencies, engines },
+        ...lockedModules,
+        ...(plan.project.serialization === "cbor" && cborLockPackages),
+      },
     };
     return [
       textFile("package.json", `${JSON.stringify(packageManifest, null, 2)}\n`),
@@ -132,7 +139,7 @@ export const nodeAdapter: LanguageAdapter = {
     return [
       textFile(
         "tests/integration_test.py",
-        renderIntegrationTest(commands, plan.project.pattern, bindRole),
+        renderIntegrationTest(commands, plan.project.pattern, bindRole, plan.project.serialization === "cbor"),
       ),
     ];
   },
@@ -169,7 +176,7 @@ node app_${connect.role}.mjs
 Edit \`config/zmq.json\` to change TCP hosts, the port, or socket options. Each app also accepts \`--config PATH\`.
 \`READY\` reports local socket startup.${deliveryNote}
 Use Ctrl+C to stop a running app.
-
+${plan.project.serialization === "cbor" ? "\n" + cborReadme + "\n" : ""}
 Run \`npm test\` with Python 3 installed to test both apps over a temporary loopback port.
 `,
     );

@@ -24,6 +24,7 @@
       "required": ["pattern", "transport", "bindRole", "bindHost", "connectHost", "port"],
       "properties": {
         "pattern": { "enum": ["req-rep", "pub-sub", "push-pull"] },
+        "serialization": { "enum": ["json", "cbor"] },
         "transport": { "const": "tcp" },
         "bindRole": { "type": "string" },
         "bindHost": { "type": "string" },

@@ -12,12 +12,13 @@ const { pythonAdapter } = require("../../dist/adapters/python/adapter.js");
 const { assembleProject } = require("../../dist/artifacts/assemble.js");
 const { planProject } = require("../../dist/planning/build.js");
 
-function projectPlan(adapter, pattern = "req-rep", bindRole = "rep") {
+function projectPlan(adapter, pattern = "req-rep", bindRole = "rep", serialization) {
   const result = planProject({
     schemaVersion: "2.0",
     project: { name: "output-validator-test", language: adapter.id },
     messaging: {
       pattern,
+      ...(serialization && { serialization }),
       transport: "tcp",
       bindRole,
       bindHost: "127.0.0.1",
@@ -36,8 +37,8 @@ function projectPlan(adapter, pattern = "req-rep", bindRole = "rep") {
   return result.value;
 }
 
-function rejectsArtifact(adapter, method, path, change, code) {
-  const plan = projectPlan(adapter);
+function rejectsArtifact(adapter, method, path, change, code, serialization) {
+  const plan = projectPlan(adapter, "req-rep", "rep", serialization);
   const files = adapter[method](plan);
   const file = files.find((item) => item.path === path);
   assert.ok(file, path);
@@ -174,6 +175,27 @@ test("Output Validator rejects malformed Node package JSON", () => {
     () => '{"dependencies":',
     "INVALID_ARTIFACT_DEPENDENCIES",
   );
+});
+
+for (const [adapter, path, declaration] of [
+  [pythonAdapter, "requirements.txt", "cbor2==VERSION"],
+  [cppAdapter, "CMakeLists.txt", "PJK/libcbor/tar.gz/refs/tags/vVERSION"],
+  [javaAdapter, "pom.xml", "<version>VERSION</version>"],
+  [nodeAdapter, "package.json", '"cbor2": "VERSION"'],
+]) {
+  test(`Output Validator checks the CBOR pin for ${adapter.id}`, () => {
+    rejectsArtifact(adapter, "generateBuildFiles", path, (content, _, plan) =>
+      content.replace(declaration.replace("VERSION", plan.dependencies[1].version), declaration.replace("VERSION", "0.0.0")),
+    "INVALID_ARTIFACT_DEPENDENCIES", "cbor");
+  });
+}
+
+test("Output Validator checks the transitive Node CBOR lock entry", () => {
+  rejectsArtifact(nodeAdapter, "generateBuildFiles", "package-lock.json", (content) => {
+    const lock = JSON.parse(content);
+    delete lock.packages["node_modules/@cto.af/wtf8"].integrity;
+    return JSON.stringify(lock);
+  }, "INVALID_ARTIFACT_DEPENDENCIES", "cbor");
 });
 
 test("Output Validator rejects an unresolved template placeholder", () => {

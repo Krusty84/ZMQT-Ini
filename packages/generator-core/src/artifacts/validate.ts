@@ -9,6 +9,8 @@ import { getCapabilities } from "../catalog/capabilities";
 import type { ApplicationPlan, GenerationPlan } from "../planning/ir";
 import type { ProjectPlan } from "../planning/pub-sub";
 import type { Diagnostic, GeneratedFile } from "../public/types";
+import { renderLibcborFetch } from "../templates/cpp/build";
+import { cborLockPackages } from "../templates/node/cbor-lock";
 import { utf8ByteLength } from "../validation/utf8";
 import { runtimeConfigFile } from "./files";
 
@@ -154,6 +156,13 @@ function matchesNpmDependencies(
   try {
     const manifest = JSON.parse(content);
     const root = path === "package.json" ? manifest : manifest?.packages?.[""];
+    if (path === "package-lock.json" && plan.project.serialization === "cbor" &&
+        !Object.entries(cborLockPackages).every(([modulePath, expected]) => {
+          const locked = manifest.packages?.[modulePath];
+          return locked?.version === expected.version && locked.resolved === expected.resolved &&
+            locked.integrity === expected.integrity &&
+            (!("dependencies" in expected) || locked.dependencies?.["@cto.af/wtf8"] === expected.dependencies["@cto.af/wtf8"]);
+        })) return false;
     return root?.engines?.node === languageVersion &&
       Object.keys(root.dependencies ?? {}).length === plan.dependencies.length &&
       plan.dependencies.every(({ id, version }) => {
@@ -182,10 +191,11 @@ function matchesDependencies(
       return matchesNpmDependencies(path, content, plan, languageVersion);
     case "pom.xml": {
       const pom = content.replace(/<!--[\s\S]*?-->/g, "");
-      const declarations = [...pom.matchAll(/<dependency>\s*<groupId>org\.zeromq<\/groupId>\s*<artifactId>([^<]+)<\/artifactId>\s*<version>([^<]+)<\/version>\s*<\/dependency>/g)];
+      const declarations = [...pom.matchAll(/<dependency>\s*<groupId>(org\.zeromq|com\.upokecenter)<\/groupId>\s*<artifactId>([^<]+)<\/artifactId>\s*<version>([^<]+)<\/version>\s*<\/dependency>/g)];
       return pom.includes(`<maven.compiler.release>${languageVersion.split(".")[0]}</maven.compiler.release>`) &&
         declarations.length === plan.dependencies.length && plan.dependencies.every(({ id, version }) =>
-          declarations.some(([, artifact, declaredVersion]) => artifact === id && declaredVersion === version),
+          declarations.some(([, group, artifact, declaredVersion]) =>
+            (group === "org.zeromq" ? artifact : `${group}:${artifact}`) === id && declaredVersion === version),
         );
     }
     case "CMakeLists.txt": {
@@ -194,6 +204,7 @@ function matchesDependencies(
         plan.dependencies.every(({ id, version }) => {
           const matching = declarations.filter(([, name]) => name === id);
           if (matching.length !== 1) return false;
+          if (id === "libcbor") return content.includes(renderLibcborFetch(version));
           const lines = matching[0][2].split("\n");
           return lines.includes(`  URL https://codeload.github.com/zeromq/${id}/tar.gz/refs/tags/v${version}`) &&
             lines.includes(`  FIND_PACKAGE_ARGS ${version} EXACT CONFIG`);

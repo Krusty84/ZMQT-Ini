@@ -6,7 +6,7 @@
 import generator from "../../package.json";
 import type { LanguageAdapter } from "../adapters/types";
 import { generateAdvancedDocsAndTest, generateAdvancedSources } from "../adapters/advanced";
-import { getCapabilities } from "../catalog/capabilities";
+import { projectDependencies } from "../catalog/capabilities";
 import { configSchemaVersion } from "../config/schema";
 import { validatePubSubPlan, type ProjectPlan } from "../planning/pub-sub";
 import { validatePlan } from "../planning/validate";
@@ -38,14 +38,11 @@ export function assembleProject(
   const diagnostics = plan.irVersion === "1.0"
     ? validatePlan(plan, adapter.capabilities()) : validatePubSubPlan(plan);
   if (diagnostics.length > 0) return fail(diagnostics);
-  const language = getCapabilities().languages.find(
-    ({ id }) => id === adapter.id,
-  )!;
+  const expectedDependencies = projectDependencies(plan.project);
   if (
-    !plan.dependencies.some(
-      ({ id, version }) =>
-        id === language.libraryId && version === language.libraryVersion,
-    ) ||
+    plan.dependencies.length !== expectedDependencies.length ||
+    !expectedDependencies.every(({ id, version }) =>
+      plan.dependencies.some((dependency) => dependency.id === id && dependency.version === version)) ||
     !adapter.templateVersion ||
     !adapter.dependencySetVersion
   ) {
@@ -77,6 +74,7 @@ export function assembleProject(
   const outputDiagnostics = validateArtifacts(files, plan, adapter.layout);
   if (outputDiagnostics.length > 0) return fail(outputDiagnostics);
 
+  const { serialization } = plan.project;
   return {
     ok: true,
     value: {
@@ -89,8 +87,9 @@ export function assembleProject(
         generatorVersion: generator.version,
         language: plan.project.language,
         pattern: plan.project.pattern,
-        templateVersion: adapter.templateVersion,
-        dependencySetVersion: adapter.dependencySetVersion,
+        ...(serialization && { serialization }),
+        templateVersion: serialization === "cbor" ? "1.6.0" : adapter.templateVersion,
+        dependencySetVersion: serialization === "cbor" ? "1.1.0" : adapter.dependencySetVersion,
       },
       files,
     },

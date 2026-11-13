@@ -13,7 +13,7 @@ int run_advanced(int argc, char* argv[], std::string_view spec);
 }
 `;
 
-export const cppAdvanced = String.raw`
+export const cppAdvanced = (cbor: boolean) => String.raw`
 #include <atomic>
 #include <future>
 #include <map>
@@ -53,7 +53,7 @@ Json load_advanced(int argc, char* argv[], const Json& spec) {
     else if (argc != 1) throw std::invalid_argument("Expected --config PATH");
     std::ifstream input(path, std::ios::binary);
     if (!input) throw std::runtime_error("Cannot read runtime configuration");
-    auto parsed = decode(std::string{std::istreambuf_iterator<char>(input), {}});
+    auto parsed = ${cbor ? "decode_json" : "decode"}(std::string{std::istreambuf_iterator<char>(input), {}});
     std::vector<std::string> fields{"bindHost", "connectHost", "port", "socketOptions"};
     if (spec.at("timed").get<bool>()) fields.push_back("maxAgeMs");
     if (spec.at("program").get<std::string>().starts_with("clone")) fields.push_back("subtree");
@@ -142,7 +142,7 @@ public:
     void log(std::string_view event, Json data = Json::object()) {
         const std::scoped_lock lock(log_mutex);
         data["event"] = event;
-        std::cout << data.dump(-1, ' ', true, Json::error_handler_t::replace) << std::endl;
+        std::cout << ${cbor ? "log_value(std::move(data))" : "data"}.dump(-1, ' ', true, Json::error_handler_t::replace) << std::endl;
     }
 
     void fail(std::string_view event) {
@@ -271,7 +271,7 @@ private:
 } // namespace zmqt
 `;
 
-export const cppStream = String.raw`
+export const cppStream = (cbor: boolean) => String.raw`
 namespace zmqt {
 namespace {
 
@@ -382,8 +382,14 @@ void advanced_program(Advanced& runtime) {
             // Replace the example topic and payload with your application data.
             Multipart frames{++sequence % 2 ? "demo/a" : "demo/b"};
             if (runtime.spec.at("timed").get<bool>()) frames.push_back(number_frame(wall_ms()));
-            frames.push_back(*encode({{"id", "event-" + std::to_string(sequence)}, {"type", "event"},
-                                      {"payload", {{"value", 42}}}}));
+${cbor ? `            auto event = encode({{"id", "event-" + std::to_string(sequence)}, {"type", "event"},
+                                 {"payload", telemetry_payload()}});
+            if (!event) {
+                runtime.fail("PROTOCOL_ERROR");
+                return;
+            }
+            frames.push_back(std::move(*event));` : `            frames.push_back(*encode({{"id", "event-" + std::to_string(sequence)}, {"type", "event"},
+                                      {"payload", {{"value", 42}}}}));`}
             runtime.send("stream", frames);
         });
     }

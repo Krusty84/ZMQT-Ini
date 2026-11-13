@@ -3,11 +3,21 @@
  * SPDX-License-Identifier: MIT
  */
 
+export function renderLibcborFetch(version: string): string {
+  return `set(WITH_EXAMPLES OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(libcbor
+  URL https://codeload.github.com/PJK/libcbor/tar.gz/refs/tags/v${version}
+  URL_HASH SHA256=a8c1516e741562cf95aa4479c64916c3d4d2623e24fdc35e414e2320e7300aae
+)
+`;
+}
+
 export function renderCppBuild(
   name: string,
   cppzmqVersion: string,
   roles: readonly string[],
   workers = false,
+  libcborVersion?: string,
 ): string {
   const targets = roles.map((role) => `app_${role}`);
   return `cmake_minimum_required(VERSION 3.24)
@@ -46,7 +56,7 @@ FetchContent_Declare(nlohmann_json
   URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
   FIND_PACKAGE_ARGS 3.12.0 EXACT CONFIG
 )
-FetchContent_MakeAvailable(ZeroMQ cppzmq nlohmann_json)
+${libcborVersion ? renderLibcborFetch(libcborVersion) : ""}FetchContent_MakeAvailable(ZeroMQ cppzmq nlohmann_json${libcborVersion ? " libcbor" : ""})
 
 add_library(zmqt_runtime STATIC zmqt_runtime.cpp message_codec.cpp)
 if(TARGET libzmq-static)
@@ -54,7 +64,7 @@ if(TARGET libzmq-static)
 else()
   target_link_libraries(zmqt_runtime PUBLIC cppzmq nlohmann_json::nlohmann_json)
 endif()
-${workers ? "find_package(Threads REQUIRED)\ntarget_link_libraries(zmqt_runtime PUBLIC Threads::Threads)\n" : ""}
+${libcborVersion ? "target_link_libraries(zmqt_runtime PRIVATE libcbor::libcbor)\n" : ""}${workers ? "find_package(Threads REQUIRED)\ntarget_link_libraries(zmqt_runtime PUBLIC Threads::Threads)\n" : ""}
 ${targets.map((target) => `add_executable(${target} ${target}.cpp)\ntarget_link_libraries(${target} PRIVATE zmqt_runtime)`).join("\n")}
 set_target_properties(zmqt_runtime ${targets.join(" ")} PROPERTIES
   CXX_STANDARD 23

@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-export const nodeAdvanced = String.raw`
-import { encode, validateMessage } from "./message_codec.mjs";
+export const nodeAdvanced = (cbor: boolean) => String.raw`
+import { ${cbor ? "INVALID, decode, " : ""}encode, validateMessage } from "./message_codec.mjs";
 
 const advancedConstructors = {
   PUB: zmq.Publisher, SUB: zmq.Subscriber, XSUB: zmq.XSubscriber, XPUB: zmq.XPublisher,
@@ -20,7 +20,7 @@ async function loadAdvancedConfig(spec) {
     throw new Error("Expected --config PATH");
   }
   const path = args[1] ?? new URL("./config/zmq.json", import.meta.url);
-  const config = decode(await readFile(path));
+  const config = ${cbor ? "decodeJson" : "decode"}(await readFile(path));
   const fields = ["bindHost", "connectHost", "port", "socketOptions"];
   if (spec.timed) fields.push("maxAgeMs");
   if (spec.program.startsWith("clone")) fields.push("subtree");
@@ -68,7 +68,7 @@ class AdvancedRuntime {
   }
 
   log(event, data) {
-    console.log(JSON.stringify({ event, ...data }));
+    console.log(${cbor ? "stringifyLog" : "JSON.stringify"}({ event, ...data }));
   }
 
   fail(event) {
@@ -199,7 +199,7 @@ export async function runAdvanced(spec, program) {
 }
 `;
 
-export const nodeStream = String.raw`
+export const nodeStream = (cbor: boolean) => String.raw`
 import { Worker, MessageChannel, isMainThread, workerData } from "node:worker_threads";
 
 function eventResult(frames, maxAgeMs) {
@@ -208,7 +208,7 @@ function eventResult(frames, maxAgeMs) {
     if (frames.length !== (timed ? 3 : 2)) throw new Error("Wrong event frame count");
     const topic = utf8Text.decode(frames[0]);
     const message = decode(frames.at(-1));
-    if (!validateMessage(message, ["event"])) throw new Error("Invalid event JSON");
+    if (!validateMessage(message, ["event"])) throw new Error("Invalid event ${cbor ? "CBOR" : "JSON"}");
     if (timed && BigInt(Date.now()) - readNumber(frames[1]) > BigInt(maxAgeMs)) {
       return { event: "SUBSCRIBER_TOO_SLOW" };
     }
@@ -338,7 +338,12 @@ export async function streamProgram(runtime) {
       // Replace the example topic and payload with your application data.
       const frames = [++sequence % 2 ? "demo/a" : "demo/b"];
       if (runtime.spec.timed) frames.push(numberFrame(Date.now()));
-      frames.push(encode({ id: "event-" + sequence, type: "event", payload: { value: 42 } }));
+${cbor ? `      const event = encode({ id: "event-" + sequence, type: "event", payload: telemetryPayload() });
+      if (event === INVALID) {
+        runtime.fail("PROTOCOL_ERROR");
+        return;
+      }
+      frames.push(event);` : `      frames.push(encode({ id: "event-" + sequence, type: "event", payload: { value: 42 } }));`}
       await runtime.send("stream", frames);
     });
   }

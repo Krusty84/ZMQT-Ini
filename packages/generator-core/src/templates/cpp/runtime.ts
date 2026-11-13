@@ -192,14 +192,14 @@ void apply_socket_option(zmq::socket_t& socket, const Option& option, const Json
 
 `;
 
-const singleSocketConfig = String.raw`Config load_config(int argc, char* argv[]) {
+const singleSocketConfig = (cbor: boolean) => String.raw`Config load_config(int argc, char* argv[]) {
     const char* path = "config/zmq.json";
     if (argc == 3 && std::string_view{argv[1]} == "--config") path = argv[2];
     else if (argc != 1) throw std::invalid_argument("Expected --config PATH");
 
     std::ifstream input(path, std::ios::binary);
     if (!input) throw std::runtime_error("Cannot read runtime configuration");
-    const auto data = decode(std::string{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()});
+    const auto data = ${cbor ? "decode_json" : "decode"}(std::string{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()});
     if (!data || !data->is_object() || data->size() != 4) throw std::invalid_argument("Invalid runtime configuration");
     Config config{data->at("bindHost").get<std::string>(), data->at("connectHost").get<std::string>(),
                   bounded_int(data->at("port"), 1, 65535), data->at("socketOptions")};
@@ -211,7 +211,7 @@ const singleSocketConfig = String.raw`Config load_config(int argc, char* argv[])
 
 `;
 
-const endpoints = String.raw`std::vector<std::string> addresses(const std::string& host, bool connects) {
+const endpoints = (cbor: boolean) => String.raw`std::vector<std::string> addresses(const std::string& host, bool connects) {
     if (check_host(host, connects) != Host::dns) return {host};
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -260,12 +260,12 @@ void log_event(std::string_view event, Json data = Json::object()) {
         const Json run_id = data["payload"]["runId"];
         data["runId"] = run_id;
     }
-    std::cout << data.dump(-1, ' ', true) << std::endl;
+    std::cout << ${cbor ? "log_value(std::move(data))" : "data"}.dump(-1, ' ', true) << std::endl;
 }
 
 `;
 
-const singleSocketRuntime = String.raw`struct LingerOnClose {
+const singleSocketRuntime = (cbor: boolean) => String.raw`struct LingerOnClose {
     zmq::socket_t& socket;
     int linger_ms;
     bool& failed;
@@ -289,7 +289,7 @@ std::string Runtime::next_id() {
 }
 
 Json Runtime::example_payload(bool include_run_id) const {
-    Json payload{{"value", 42}};
+    ${cbor ? "auto payload = telemetry_payload();" : 'Json payload{{"value", 42}};'}
     if (include_run_id && !run_id_.empty()) payload["runId"] = run_id_;
     return payload;
 }
@@ -411,12 +411,12 @@ int run(int argc, char* argv[], zmq::socket_type socket_type, bool binds,
 } // namespace zmqt
 `;
 
-export const cppRuntime =
+export const cppRuntime = (cbor: boolean) =>
   validation +
-  singleSocketConfig +
-  endpoints +
-  singleSocketRuntime;
+  singleSocketConfig(cbor) +
+  endpoints(cbor) +
+  singleSocketRuntime(cbor);
 
-export const cppAdvancedBase =
+export const cppAdvancedBase = (cbor: boolean) =>
   validation +
-  endpoints + "} // namespace\n} // namespace zmqt\n";
+  endpoints(cbor) + "} // namespace\n} // namespace zmqt\n";

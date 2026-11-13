@@ -8,8 +8,9 @@ import {
   getCapabilities,
   p0LanguageCapabilities,
 } from "../../catalog/capabilities";
-import { pythonCodec } from "../../templates/python/codec";
+import { renderPythonCodec } from "../../templates/python/codec";
 import { pythonRuntime } from "../../templates/python/runtime";
+import { cborReadme } from "../../templates/shared/cbor";
 import { renderIntegrationTest } from "../../templates/shared/integration";
 import { renderScripts, scriptUsage } from "../../templates/shared/scripts";
 import type { LanguageAdapter } from "../types";
@@ -31,16 +32,17 @@ export const pythonAdapter: LanguageAdapter = {
   },
   capabilities: p0LanguageCapabilities,
   generate(plan) {
+    const cbor = plan.project.serialization === "cbor";
     return [
       ...plan.applications.map((application) =>
         textFile(
           entryPoint(application.role),
-          renderPythonApplication(application),
+          renderPythonApplication(application, cbor),
           true,
         ),
       ),
-      textFile("message_codec.py", pythonCodec),
-      textFile("zmqt_runtime.py", pythonRuntime),
+      textFile("message_codec.py", renderPythonCodec(cbor)),
+      textFile("zmqt_runtime.py", pythonRuntime(cbor)),
     ];
   },
   generateBuildFiles(plan) {
@@ -79,7 +81,7 @@ export const pythonAdapter: LanguageAdapter = {
     return [
       textFile(
         "tests/integration_test.py",
-        renderIntegrationTest(commands, plan.project.pattern, bindRole),
+        renderIntegrationTest(commands, plan.project.pattern, bindRole, plan.project.serialization === "cbor"),
       ),
     ];
   },
@@ -118,7 +120,7 @@ python app_${connect.role}.py
 Edit \`config/zmq.json\` to change TCP hosts, the port, or socket options. Each app also accepts \`--config PATH\`.
 \`READY\` confirms that the local socket started. It does not confirm delivery. PUB/SUB can lose messages before a subscription reaches the publisher or when queues fill.
 Use Ctrl+C to stop a running app.
-
+${plan.project.serialization === "cbor" ? "\n" + cborReadme + "\n" : ""}
 Run the integration test with both apps and a temporary loopback port.
 
 \`\`\`sh

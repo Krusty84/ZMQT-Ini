@@ -13,6 +13,7 @@
       "required": ["pattern", "transport", "bindRole", "bindHost", "connectHost", "port", "extensions"],
       "properties": {
         "pattern": { "const": "pub-sub" },
+        "serialization": { "$ref": "config.schema.json#/properties/messaging/properties/serialization" },
         "transport": { "const": "tcp" },
         "bindRole": { "type": "string" },
         "bindHost": { "type": "string" },

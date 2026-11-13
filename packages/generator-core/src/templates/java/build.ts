@@ -9,7 +9,14 @@ export function renderPom(
   projectName: string,
   javaRelease: string,
   jeromqVersion: string,
+  cborVersion?: string,
 ): string {
+  const cborDependency = cborVersion ? `    <dependency>
+      <groupId>com.upokecenter</groupId>
+      <artifactId>cbor</artifactId>
+      <version>${cborVersion}</version>
+    </dependency>
+` : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -48,7 +55,7 @@ export function renderPom(
       <artifactId>jackson-annotations</artifactId>
       <version>2.23</version>
     </dependency>
-  </dependencies>
+${cborDependency}  </dependencies>
   <build>
     <finalName>zmqt-apps</finalName>
     <plugins>

@@ -4,7 +4,7 @@
  */
 
 import {
-  getCapabilities,
+  projectDependencies,
   p0LanguageCapabilities,
 } from "../catalog/capabilities";
 import { buildBehavior } from "../patterns/behavior";
@@ -14,7 +14,7 @@ import type { BasicConfig, CoreResult, Diagnostic } from "../public/types";
 import { compileTopology, type RolePlan } from "../topology/compiler";
 import { buildLifecycle } from "../topology/lifecycle";
 import { validateConfig } from "../validation/config";
-import type { ApplicationPlan, GenerationPlan } from "./ir";
+import type { ApplicationPlan, GenerationPlan, ProjectSpec } from "./ir";
 import { validatePlan } from "./validate";
 import { compilePubSub, validatePubSubPlan, type ProjectPlan } from "./pub-sub";
 
@@ -25,12 +25,10 @@ function buildPlan(
   diagnostics: readonly Diagnostic[],
 ): GenerationPlan {
   const { name, language } = config.project;
-  const { pattern } = config.messaging;
+  const { pattern, serialization } = config.messaging;
+  const project: ProjectSpec = { name, language, pattern, ...(serialization === "cbor" && { serialization }) };
   const topology = compileTopology(config);
   const definition = patternRegistry[pattern];
-  const { libraryId, libraryVersion } = getCapabilities().languages.find(
-    ({ id }) => id === language,
-  )!;
 
   const application = (
     role: RolePlan,
@@ -43,9 +41,9 @@ function buildPlan(
 
   return {
     irVersion: "1.0",
-    project: { name, language, pattern },
+    project,
     topology,
-    dependencies: [{ id: libraryId, version: libraryVersion }],
+    dependencies: projectDependencies(project),
     applications: [
       application(topology.roles[0], definition.roles[0]),
       application(topology.roles[1], definition.roles[1]),

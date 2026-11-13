@@ -8,7 +8,7 @@ import type {
   BehaviorNode,
   BehaviorOperation,
 } from "../../planning/ir";
-import { roleComments } from "../../templates/shared/role-comments";
+import { formatRoleComment, roleComments } from "../../templates/shared/role-comments";
 import { runtimeSocketOptionNames } from "../../topology/compiler";
 
 type Build = Extract<BehaviorOperation, { op: "build" }>;
@@ -166,7 +166,7 @@ function renderNode({ operation, transitions }: BehaviorNode): string[] {
   }
 }
 
-export function renderJavaApplication(application: ApplicationPlan): string {
+export function renderJavaApplication(application: ApplicationPlan, cbor = false): string {
   const { behavior, endpoint, lifecycle, socketType } = application;
   const className = `App${socketType}`;
   const subscription = lifecycle.startup.find(
@@ -191,7 +191,7 @@ export function renderJavaApplication(application: ApplicationPlan): string {
     "            switch (state) {",
     ...behavior.nodes.flatMap((node) => [
       `                case ${JSON.stringify(node.id)} -> {`,
-      ...(comments[node.id] ?? []).map((line) => `                    // ${line}`),
+      ...(comments[node.id] ?? []).map((line) => `                    // ${formatRoleComment(line, cbor)}`),
       ...renderNode(node).map((line) => `                    ${line}`),
       "                }",
     ]),

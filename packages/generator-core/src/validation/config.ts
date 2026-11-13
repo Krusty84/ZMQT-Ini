@@ -77,6 +77,7 @@ const unsupportedValues: Readonly<Record<string, readonly [string, string]>> = {
     "Unsupported messaging pattern.",
   ],
   "/messaging/transport": ["UNSUPPORTED_TRANSPORT", "Unsupported transport."],
+  "/messaging/serialization": ["UNSUPPORTED_SERIALIZATION", "Unsupported message serialization."],
 };
 
 function schemaDiagnostic({
@@ -208,13 +209,16 @@ function checkHosts(bindHost: string, connectHost: string, path: string): Diagno
 const combinations = extensionCombinations().map(({ extensions }) => extensions.join(","));
 
 function checkAdvanced(config: AdvancedConfig, diagnostics: Diagnostic[]): void {
-  const { extensions, maxAgeMs, subtree, backup, port, bindHost, connectHost } = config.messaging;
+  const { extensions, maxAgeMs, subtree, backup, port, bindHost, connectHost, serialization } = config.messaging;
   const { clone, binaryStar, portCount } = extensionTopology(extensions);
   const error = (code: string, field: string, message: string) => {
     diagnostics.push({ severity: "error", code, path: `/messaging/${field}`, message });
   };
   if (!combinations.includes(extensions.join(","))) {
     error("INCOMPATIBLE_EXTENSIONS", "extensions", "PUB/SUB extensions cannot be combined.");
+  }
+  if (clone && serialization !== undefined) {
+    error("INACTIVE_EXTENSION_OPTION", "serialization", "Clone uses the 12/CHP protocol.");
   }
   for (const [field, value, active] of [
     ["maxAgeMs", maxAgeMs, extensions.includes("suicidal-snail")],

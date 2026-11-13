@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-export const pythonAdvanced = String.raw`
+export const pythonAdvanced = (cbor: boolean) => String.raw`
 import threading
 
-from message_codec import encode, validate_message
+from message_codec import ${cbor ? "INVALID, decode, " : ""}encode, validate_message
 
 
 def _subtree(value):
@@ -16,7 +16,7 @@ def _subtree(value):
 def _advanced_config(spec):
     parser = argparse.ArgumentParser(exit_on_error=False)
     parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent / "config" / "zmq.json")
-    config = decode(parser.parse_args().config.read_bytes())
+    config = ${cbor ? "decode_json" : "decode"}(parser.parse_args().config.read_bytes())
     fields = {"bindHost", "connectHost", "port", "socketOptions"}
     if spec["timed"]:
         fields.add("maxAgeMs")
@@ -80,7 +80,7 @@ class _Advanced:
 
     def log(self, event, **data):
         with self.log_lock:
-            print(json.dumps({"event": event, **data}, ensure_ascii=True, separators=(",", ":")), flush=True)
+            print(json.dumps({"event": event, **data}, ensure_ascii=True, separators=(",", ":")${cbor ? ", default=log_bytes" : ""}), flush=True)
 
     def fail(self, event):
         with self.log_lock:
@@ -204,7 +204,7 @@ def run_advanced(spec_json, program):
     return runtime.status
 `;
 
-export const pythonStream = String.raw`
+export const pythonStream = (cbor: boolean) => String.raw`
 
 def _handle_event(runtime, frames, worker=None):
     timed = runtime.spec["timed"]
@@ -214,7 +214,7 @@ def _handle_event(runtime, frames, worker=None):
         topic = frames[0].decode("utf-8")
         message = decode(frames[-1])
         if not validate_message(message, ("event",)):
-            raise ValueError("Invalid event JSON")
+            raise ValueError("Invalid event ${cbor ? "CBOR" : "JSON"}")
         sent_at = _from_number(frames[1]) if timed else None
     except ValueError:
         runtime.log("PROTOCOL_ERROR")
@@ -316,7 +316,11 @@ def stream_program(runtime):
             frames = [b"demo/a" if sequence % 2 else b"demo/b"]
             if runtime.spec["timed"]:
                 frames.append(_number(_wall_ms()))
-            frames.append(encode({"id": f"event-{sequence}", "type": "event", "payload": {"value": 42}}))
+${cbor ? `            event = encode({"id": f"event-{sequence}", "type": "event", "payload": telemetry_payload()})
+            if event is INVALID:
+                runtime.fail("PROTOCOL_ERROR")
+                return
+            frames.append(event)` : `            frames.append(encode({"id": f"event-{sequence}", "type": "event", "payload": {"value": 42}}))`}
             runtime.send("stream", frames)
 
         runtime.loop(lambda _name, _frames: None, publish)

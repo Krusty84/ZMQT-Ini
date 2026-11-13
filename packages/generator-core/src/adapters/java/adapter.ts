@@ -11,6 +11,7 @@ import {
 import { javaJarPath, renderPom } from "../../templates/java/build";
 import { javaCodec } from "../../templates/java/codec";
 import { javaRuntime } from "../../templates/java/runtime";
+import { cborReadme } from "../../templates/shared/cbor";
 import { renderIntegrationTest } from "../../templates/shared/integration";
 import { renderScripts, scriptUsage } from "../../templates/shared/scripts";
 import type { LanguageAdapter } from "../types";
@@ -38,15 +39,16 @@ export const javaAdapter: LanguageAdapter = {
   },
   capabilities: p0LanguageCapabilities,
   generate(plan) {
+    const cbor = plan.project.serialization === "cbor";
     return [
       ...plan.applications.map((application) =>
         textFile(
           entryPoint(application.role),
-          renderJavaApplication(application),
+          renderJavaApplication(application, cbor),
         ),
       ),
-      textFile("src/main/java/MessageCodec.java", javaCodec),
-      textFile("src/main/java/ZmqtRuntime.java", javaRuntime),
+      textFile("src/main/java/MessageCodec.java", javaCodec(cbor)),
+      textFile("src/main/java/ZmqtRuntime.java", javaRuntime(cbor)),
     ];
   },
   generateBuildFiles(plan) {
@@ -54,7 +56,8 @@ export const javaAdapter: LanguageAdapter = {
     return [
       textFile(
         "pom.xml",
-        renderPom(plan.project.name, javaRelease, jeromq.version),
+        renderPom(plan.project.name, javaRelease, jeromq.version,
+          plan.dependencies.find(({ id }) => id === "com.upokecenter:cbor")?.version),
       ),
       ...renderScripts(plan, {
         build: ["mvn -B -q package"],
@@ -83,7 +86,7 @@ export const javaAdapter: LanguageAdapter = {
     return [
       textFile(
         "tests/integration_test.py",
-        renderIntegrationTest(commands, plan.project.pattern, bindRole),
+        renderIntegrationTest(commands, plan.project.pattern, bindRole, plan.project.serialization === "cbor"),
       ),
     ];
   },
@@ -118,7 +121,7 @@ java -cp ${javaJarPath} App${connect.socketType}
 Edit \`config/zmq.json\` to change TCP hosts, the port, or socket options. Each app also accepts \`--config PATH\`.
 \`READY\` confirms that the local socket started. PUB/SUB can lose messages before a subscription arrives or when queues fill.
 Use Ctrl+C to stop a running app.
-
+${plan.project.serialization === "cbor" ? "\n" + cborReadme + "\n" : ""}
 Run the integration test with both apps and a temporary loopback port.
 
 \`\`\`sh

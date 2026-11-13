@@ -111,9 +111,9 @@ jobs:
           distribution: oracle
           java-version: '27.0.1'
 
-      - name: Install PyZMQ
+      - name: Install wire test dependencies
         id: install_pyzmq
-        run: python3 -m pip install pyzmq==27.3.0
+        run: python3 -m pip install pyzmq==27.3.0 cbor2==6.2.1
 
       - name: Check integration tools
         id: check_tools
@@ -179,12 +179,27 @@ jobs:
           fi
           exit "$status"
 
+      - name: Run CBOR project tests
+        id: cbor_projects
+        run: |
+          status=0
+          log="$RUNNER_TEMP/cbor-projects.tap"
+          node --test --test-reporter=tap tests/cbor-ci/projects.test.cjs 2>&1 | tee "$log" || status=$?
+          passed=$(awk '/^ok [0-9]+ - generated (python|cpp|java|node) CBOR / && !/# SKIP/ { count++ } END { print count + 0 }' "$log")
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+          if [[ "$passed" != 20 ]]; then
+            echo "::error::Expected 20 passing CBOR configurations, found $passed."
+            exit 1
+          fi
+          exit "$status"
+
       - name: Write Generated Projects Integration summary
         if: ${{ !cancelled() }}
         env:
           RESULT: ${{ job.status }}
           PASSED: ${{ steps.integration_tests.outputs.passed || '0' }}
           ADVANCED: ${{ steps.advanced_pub_sub.outputs.passed || '0' }}
+          CBOR: ${{ steps.cbor_projects.outputs.passed || '0' }}
           STEPS: ${{ toJSON(steps) }}
         run: |
           {
@@ -193,6 +208,7 @@ jobs:
             echo "- Result — $RESULT"
             echo "- Configurations passed — $PASSED / 24"
             echo "- Advanced PUB/SUB configurations passed — $ADVANCED / 36"
+            echo "- CBOR configurations passed — $CBOR / 20"
             if [[ "$RESULT" == failure ]]; then
               printf '\nFailed steps and tests. See the job log for diagnostics.\n\n'
               jq -r 'to_entries[] | select(.value.outcome == "failure") | "- \(.key)"' <<< "$STEPS"
@@ -204,6 +220,9 @@ jobs:
               fi
               if [[ -f "$RUNNER_TEMP/advanced-pub-sub.tap" ]]; then
                 sed -nE 's/^not ok [0-9]+ - /- /p' "$RUNNER_TEMP/advanced-pub-sub.tap"
+              fi
+              if [[ -f "$RUNNER_TEMP/cbor-projects.tap" ]]; then
+                sed -nE 's/^not ok [0-9]+ - /- /p' "$RUNNER_TEMP/cbor-projects.tap"
               fi
             fi
             if [[ -s "$RUNNER_TEMP/integration-tools.log" ]]; then

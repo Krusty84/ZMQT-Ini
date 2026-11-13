@@ -22,6 +22,14 @@ if (result.ok) {
 
 Set `schemaVersion` to `"2.0"`. The limit is 32,768 UTF-8 bytes of compact JSON. Supply IPv4, bare IPv6, or a DNS name without a port. Bind also accepts `*`. Connect requires a destination address. [Basic configuration schema](resources/config.schema.json)
 
+## Message serialization
+
+Set `messaging.serialization` to `"json"` or `"cbor"` in the generator input. JSON is the default. The option applies to REQ/REP, PUSH/PULL, and PUB/SUB events, including advanced streams. Clone and Binary Star use 12/CHP and require this field to be omitted.
+
+CBOR packs `id`, `type`, and `payload` in one message frame. In an advanced stream, that frame follows the topic and any timestamp. Payloads support JSON values and byte strings. Both peers must use the same format. The generated README shows where to replace the sample telemetry payload.
+
+`getCapabilities().serializations` lists the formats. `inspectProject()` and the manifest report `serialization: "cbor"` for a CBOR project.
+
 ## TCP socket options
 
 Both profiles require `sendHwm`, `receiveHwm`, `sendTimeoutMs`, `receiveTimeoutMs`, and `lingerMs` in `socketOptions`. Supply the optional fields as needed. Omitted fields use the socket defaults. The same fields can be set in the generated `config/zmq.json`.
@@ -63,7 +71,7 @@ Use diagnostic `code`, `path`, and `params` for machine handling. `path` is a JS
 | --- | --- |
 | `INVALID_JSON_INPUT`, `MISSING_FIELD`, `UNKNOWN_FIELD` | |
 | `INVALID_TYPE` | `expected` |
-| `UNSUPPORTED_SCHEMA_VERSION`, `UNSUPPORTED_LANGUAGE`, `UNSUPPORTED_PATTERN`, `UNSUPPORTED_TRANSPORT` | |
+| `UNSUPPORTED_SCHEMA_VERSION`, `UNSUPPORTED_LANGUAGE`, `UNSUPPORTED_PATTERN`, `UNSUPPORTED_TRANSPORT`, `UNSUPPORTED_SERIALIZATION` | |
 | `INVALID_PROJECT_NAME`, `PROJECT_NAME_TOO_LONG` | `maxLength` for `PROJECT_NAME_TOO_LONG` |
 | `VALUE_BELOW_MINIMUM`, `VALUE_ABOVE_MAXIMUM` | `min` or `max` |
 | `INVALID_SOCKET_OPTION_COMBINATION` | |
@@ -88,9 +96,12 @@ Run the generated-project integration matrix from the repository root after buil
 ```sh
 node --test tests/generated-project-ci/*.test.cjs
 node --test tests/advanced-pub-sub-ci/*.test.cjs
+node --test tests/cbor-ci/*.test.cjs
 ```
 
 The matrix uses the versions in the catalog, a C++23 compiler, CMake, and Maven. Set `ZMQT_PYTHON` to the Python interpreter with pinned PyZMQ, `ZMQT_NODE` to the Node.js executable, and `ZMQT_JAVA_HOME` to the JDK if they are outside the default PATH. The runner builds projects in temporary directories and uses loopback TCP. Golden and concurrent generation tests run through `npm test`. The p95 reference is macOS 27.0.1 arm64 with Node.js 26.13.0.
+
+Install `cbor2==6.2.1` in the test Python environment for the 20 CBOR configurations.
 
 Use the repository CLI host to write a generated project to a new directory.
 

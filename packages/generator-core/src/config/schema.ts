@@ -45,6 +45,7 @@ function commonFields(config: NormalizedConfig): Omit<BasicConfig, "schemaVersio
       bindHost: messaging.bindHost,
       connectHost: messaging.connectHost,
       port: messaging.port,
+      ...(messaging.serialization !== undefined && { serialization: messaging.serialization }),
     },
     socketOptions: options,
   };

@@ -7,7 +7,7 @@ import { configSchemaVersion } from "../config/schema";
 import { socketOptionDefinitions, socketOptionSchema } from "../config/socket-options";
 import { patternRegistry } from "../patterns/registry";
 import { extensionCombinations } from "../patterns/pub-sub-extensions";
-import type { LanguageCapabilities } from "../planning/ir";
+import type { DependencySpec, LanguageCapabilities, ProjectSpec } from "../planning/ir";
 import type { CapabilityCatalog } from "../public/types";
 
 const patterns = Object.values(patternRegistry);
@@ -42,6 +42,20 @@ const languages = [
   CapabilityCatalog["languages"][number],
   "patterns"
 >[];
+
+const cborDependencies: Record<ProjectSpec["language"], DependencySpec> = {
+  python: { id: "cbor2", version: "6.2.1" },
+  cpp: { id: "libcbor", version: "0.14.0" },
+  java: { id: "com.upokecenter:cbor", version: "4.5.6" },
+  node: { id: "cbor2", version: "2.4.1" },
+};
+
+export function projectDependencies(project: ProjectSpec): readonly DependencySpec[] {
+  const { libraryId, libraryVersion } = languages.find(({ id }) => id === project.language)!;
+  const dependencies: DependencySpec[] = [{ id: libraryId, version: libraryVersion }];
+  if (project.serialization === "cbor") dependencies.push({ ...cborDependencies[project.language] });
+  return dependencies;
+}
 
 export function p0LanguageCapabilities(): LanguageCapabilities {
   return {
@@ -79,6 +93,7 @@ export function getCapabilities(): CapabilityCatalog {
       bindRoles: [...permittedBindRoles],
     })),
     transports: ["tcp"],
+    serializations: ["json", "cbor"],
     pubSubExtensions: {
       configSchemaVersion,
       irVersion: "1.1",

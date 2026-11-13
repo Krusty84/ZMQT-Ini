@@ -3,11 +3,15 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { cborLogPayload } from "./cbor";
+
 export function renderIntegrationTest(
   commands: Readonly<Record<string, readonly string[]>>,
   pattern: string,
   bindRole: string,
+  cbor = false,
 ): string {
+  const payload = cbor ? cborLogPayload : '{"value": 42}';
   return `import json
 import os
 import queue
@@ -112,7 +116,7 @@ def matches_message(event, run_id):
     message_id = event.get("id")
     if PATTERN == "req-rep":
         return (event.get("event") == "RESPONSE_RECEIVED" and message_id == f"{run_id}-0001"
-                and event.get("type") == "response" and event.get("payload") == {"value": 42})
+                and event.get("type") == "response" and event.get("payload") == ${payload})
 
     prefix = f"{run_id}-"
     if not isinstance(message_id, str) or not message_id.startswith(prefix):
@@ -123,9 +127,9 @@ def matches_message(event, run_id):
 
     if PATTERN == "pub-sub":
         return (event.get("event") == "MESSAGE_RECEIVED" and event.get("type") == "event"
-                and event.get("runId") == run_id and event.get("payload") == {"runId": run_id, "value": 42})
+                and event.get("runId") == run_id and event.get("payload") == {"runId": run_id, ${payload.slice(1, -1)}})
     return (event.get("event") == "TASK_PROCESSED" and event.get("type") == "task"
-            and event.get("payload") == {"value": 42} and event.get("result") == "processed")
+            and event.get("payload") == ${payload} and event.get("result") == "processed")
 
 
 def run_case(timeout_case=False):

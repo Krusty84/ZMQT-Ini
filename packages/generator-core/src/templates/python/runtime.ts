@@ -6,7 +6,7 @@
 import { defaultReconnectIntervalMs, socketOptionDefinitions, socketOptionSchema } from "../../config/socket-options";
 import { zmqOptionNames } from "../shared/zmq-option-names";
 
-const imports = String.raw`import argparse
+const imports = (cbor: boolean) => String.raw`import argparse
 import ipaddress
 import json
 import math
@@ -19,7 +19,7 @@ import time
 
 import zmq
 
-from message_codec import decode
+from message_codec import ${cbor ? "decode_json, log_bytes, telemetry_payload" : "decode"}
 
 
 `;
@@ -92,10 +92,10 @@ def _validate_socket_options(options):
 
 `;
 
-const singleSocketConfig = String.raw`def _load_config():
+const singleSocketConfig = (cbor: boolean) => String.raw`def _load_config():
     parser = argparse.ArgumentParser(exit_on_error=False)
     parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent / "config" / "zmq.json")
-    config = decode(parser.parse_args().config.read_bytes())
+    config = ${cbor ? "decode_json" : "decode"}(parser.parse_args().config.read_bytes())
     if type(config) is not dict or config.keys() != {"bindHost", "connectHost", "port", "socketOptions"}:
         raise ValueError("Invalid runtime configuration")
     _check_host(config["bindHost"], connect=False)
@@ -138,7 +138,7 @@ def _bind(sock, host, port):
 
 `;
 
-const singleSocketRuntime = String.raw`class _Runtime:
+const singleSocketRuntime = (cbor: boolean) => String.raw`class _Runtime:
     def __init__(self):
         self.stopping = False
         self.run_id = os.environ.get("ZMQT_TEST_RUN_ID") or None
@@ -149,7 +149,7 @@ const singleSocketRuntime = String.raw`class _Runtime:
         return f"{self.run_id or 'msg'}-{self.sequence:04d}"
 
     def example_payload(self, include_test_run_id):
-        payload = {"value": 42}
+        payload = ${cbor ? "telemetry_payload()" : '{"value": 42}'}
         if include_test_run_id and self.run_id is not None:
             payload["runId"] = self.run_id
         return payload
@@ -161,7 +161,7 @@ const singleSocketRuntime = String.raw`class _Runtime:
             payload = data["payload"]
             if event == "MESSAGE_RECEIVED" and type(payload) is dict and "runId" in payload:
                 entry["runId"] = payload["runId"]
-        print(json.dumps(entry, ensure_ascii=True, allow_nan=False, separators=(",", ":")), flush=True)
+        print(json.dumps(entry, ensure_ascii=True, allow_nan=False, separators=(",", ":")${cbor ? ", default=log_bytes" : ""}), flush=True)
 
     def _transfer(self, operation, events, timeout_ms):
         # sendTimeoutMs or receiveTimeoutMs limits the wait for one operation.
@@ -284,15 +284,15 @@ def run(socket_type, mode, active_options, subscription, behavior):
     return result
 `;
 
-export const pythonRuntime =
-  imports +
+export const pythonRuntime = (cbor: boolean) =>
+  imports(cbor) +
   pollSlice +
   validation +
-  singleSocketConfig +
+  singleSocketConfig(cbor) +
   endpoints +
-  singleSocketRuntime;
+  singleSocketRuntime(cbor);
 
-export const pythonAdvancedBase =
-  imports +
+export const pythonAdvancedBase = (cbor: boolean) =>
+  imports(cbor) +
   validation +
   endpoints;

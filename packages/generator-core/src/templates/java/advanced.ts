@@ -17,7 +17,7 @@ import java.util.function.BiConsumer;
 import tools.jackson.databind.node.ObjectNode;
 `;
 
-export const javaAdvanced = String.raw`
+export const javaAdvanced = (cbor: boolean) => String.raw`
     private static boolean validSubtree(String value) {
         return value.isEmpty() || value.matches("/(?:[^/\\x00]+/)+");
     }
@@ -26,7 +26,7 @@ export const javaAdvanced = String.raw`
         Path path = Path.of("config", "zmq.json");
         if (args.length == 2 && args[0].equals("--config")) path = Path.of(args[1]);
         else if (args.length != 0) throw new IllegalArgumentException("Expected --config PATH");
-        JsonNode config = MessageCodec.decode(Files.readAllBytes(path));
+        JsonNode config = MessageCodec.${cbor ? "decodeJson" : "decode"}(Files.readAllBytes(path));
         var fields = new java.util.HashSet<>(CONFIG_FIELDS);
         if (spec.get("timed").booleanValue()) fields.add("maxAgeMs");
         if (spec.get("program").asString().startsWith("clone")) fields.add("subtree");
@@ -285,7 +285,7 @@ export const javaAdvanced = String.raw`
     }
 `;
 
-export const javaStream = String.raw`
+export const javaStream = (cbor: boolean) => String.raw`
     private static void handleEvent(Advanced runtime, List<byte[]> frames, int worker) {
         boolean timed = runtime.spec.get("timed").booleanValue();
         if (frames.size() != (timed ? 3 : 2)) {
@@ -416,8 +416,14 @@ export const javaStream = String.raw`
                         var frames = new ArrayList<byte[]>();
                         frames.add(bytes(++sequence % 2 == 1 ? "demo/a" : "demo/b"));
                         if (runtime.spec.get("timed").booleanValue()) frames.add(numberFrame(System.currentTimeMillis()));
-                        frames.add(MessageCodec.encode(MessageCodec.message("event-" + sequence, "event",
-                            MessageCodec.object().put("value", 42))));
+${cbor ? `                        var event = MessageCodec.encode(MessageCodec.message("event-" + sequence, "event",
+                            MessageCodec.telemetryPayload()));
+                        if (event == null) {
+                            runtime.fail("PROTOCOL_ERROR");
+                            return;
+                        }
+                        frames.add(event);` : `                        frames.add(MessageCodec.encode(MessageCodec.message("event-" + sequence, "event",
+                            MessageCodec.object().put("value", 42))));`}
                         runtime.send("stream", frames);
                     }
                 });

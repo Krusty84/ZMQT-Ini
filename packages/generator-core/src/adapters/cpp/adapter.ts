@@ -8,6 +8,7 @@ import { p0LanguageCapabilities } from "../../catalog/capabilities";
 import { renderCppBuild } from "../../templates/cpp/build";
 import { cppCodec, cppCodecHeader } from "../../templates/cpp/codec";
 import { cppRuntime, cppRuntimeHeader } from "../../templates/cpp/runtime";
+import { cborReadme } from "../../templates/shared/cbor";
 import { renderIntegrationTest } from "../../templates/shared/integration";
 import { renderScripts, scriptUsage } from "../../templates/shared/scripts";
 import type { LanguageAdapter } from "../types";
@@ -32,17 +33,18 @@ export const cppAdapter: LanguageAdapter = {
   },
   capabilities: p0LanguageCapabilities,
   generate(plan) {
+    const cbor = plan.project.serialization === "cbor";
     return [
       ...plan.applications.map((application) =>
         textFile(
           entryPoint(application.role),
-          renderCppApplication(application),
+          renderCppApplication(application, cbor),
         ),
       ),
-      textFile("message_codec.hpp", cppCodecHeader),
-      textFile("message_codec.cpp", cppCodec),
+      textFile("message_codec.hpp", cppCodecHeader(cbor)),
+      textFile("message_codec.cpp", cppCodec(cbor)),
       textFile("zmqt_runtime.hpp", cppRuntimeHeader),
-      textFile("zmqt_runtime.cpp", cppRuntime),
+      textFile("zmqt_runtime.cpp", cppRuntime(cbor)),
     ];
   },
   generateBuildFiles(plan) {
@@ -57,6 +59,7 @@ export const cppAdapter: LanguageAdapter = {
           cppzmqVersion,
           plan.applications.map(({ role }) => role),
           plan.irVersion === "1.1",
+          plan.dependencies.find(({ id }) => id === "libcbor")?.version,
         ),
       ),
       ...renderScripts(plan, {
@@ -82,7 +85,7 @@ export const cppAdapter: LanguageAdapter = {
     return [
       textFile(
         "tests/integration_test.py",
-        renderIntegrationTest(commands, plan.project.pattern, bindRole),
+        renderIntegrationTest(commands, plan.project.pattern, bindRole, plan.project.serialization === "cbor"),
       ),
     ];
   },
@@ -118,7 +121,7 @@ From the project directory, start the Bind app. Then start the Connect app in an
 Edit \`config/zmq.json\` to change TCP hosts, the port, or socket options. Each app also accepts \`--config PATH\`.
 \`READY\` confirms that the local socket started. PUB/SUB can lose messages before a subscription reaches the publisher or when queues fill.
 Use Ctrl+C to stop a running app.
-
+${plan.project.serialization === "cbor" ? "\n" + cborReadme + "\n" : ""}
 After the build, run the integration test with both apps and a temporary loopback port.
 
 \`\`\`sh

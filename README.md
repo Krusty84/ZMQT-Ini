@@ -10,6 +10,7 @@ The utility generates applications, build scripts, and tests for a ZeroMQ topolo
 
 - Generate Python, C++, Java, and Node.js projects.
 - Use REQ/REP, PUB/SUB, or PUSH/PULL over TCP.
+- Serialize application messages as JSON or CBOR.
 - Pub-Sub Patterns: Espresso, Last Value Caching, Suicidal Snail, Black Box, Clone, or Binary Star to PUB/SUB.
 - Build and run generated projects with Bash or PowerShell scripts.
 
@@ -41,6 +42,7 @@ Start with the `config.json` in the repository root. It uses schema `2.0` and co
 
 - Set the project name and language in `project`.
 - Set the pattern, bind role, hosts, and port in `messaging`.
+- Set `messaging.serialization` to `"cbor"` to send binary messages. [Message serialization](packages/generator-core/README.md#message-serialization)
 - Keep `sendHwm`, `receiveHwm`, `sendTimeoutMs`, `receiveTimeoutMs`, and `lingerMs` in `socketOptions`. The other socket options in the starter are optional. [Socket options reference](packages/generator-core/README.md#tcp-socket-options)
 
 Choose a new output directory with an existing parent. Relative paths use your current directory. Run the command for your platform from the repository root to generate the project in `out`.

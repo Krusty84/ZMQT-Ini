@@ -10,6 +10,10 @@ type StateComments = Readonly<Partial<Record<string, readonly string[]>>>;
 const integrationPoint = "INTEGRATION POINT - ";
 const receiveFrame = "Expect one UTF-8 JSON frame with id, type, and payload.";
 const sendFrame = "Send one UTF-8 JSON frame with id, type, and payload.";
+
+export function formatRoleComment(comment: string, cbor: boolean): string {
+  return cbor ? comment.replace("UTF-8 JSON", "CBOR") : comment;
+}
 const receiveTimeout = "Wait for another message after a receive timeout.";
 const sendTimeout = "End the loop after a send timeout.";
 const invalidMessage = "Log a protocol error and skip this message.";

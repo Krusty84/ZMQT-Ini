@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { getCapabilities } from "../catalog/capabilities";
+import { projectDependencies } from "../catalog/capabilities";
 import { configSchemaVersion, isAdvancedConfig } from "../config/schema";
 import { optionalTcpSocketOptions } from "../config/socket-options";
 import { extensionTopology } from "../patterns/pub-sub-extensions";
 import type { AdvancedConfig, Diagnostic } from "../public/types";
 import { formatEndpointUri } from "../topology/compiler";
 import { validateConfig } from "../validation/config";
-import type { DependencySpec, GenerationPlan } from "./ir";
+import type { DependencySpec, GenerationPlan, ProjectSpec } from "./ir";
 
 const directions = {
   PUB: [true, false], SUB: [false, true], XSUB: [true, true], XPUB: [true, true],
@@ -73,8 +73,8 @@ export function compilePubSub(config: AdvancedConfig, diagnostics: readonly Diag
   const { messaging, socketOptions } = config;
   const { clone, binaryStar, proxy, portCount } = extensionTopology(messaging.extensions);
   const { language, name } = config.project;
-  const { libraryId, libraryVersion } = getCapabilities().languages.find(({ id }) => id === language)!;
-  const { extensions } = messaging;
+  const { extensions, serialization } = messaging;
+  const project: ProjectSpec = { name, language, pattern: "pub-sub", ...(serialization === "cbor" && { serialization }) };
   const workerCount = extensions.includes("black-box") ? 2 : 0;
   const tcp = (
     name: string, type: SocketType, mode: Mode, offset: number,
@@ -149,7 +149,7 @@ export function compilePubSub(config: AdvancedConfig, diagnostics: readonly Diag
     }
   }
   return {
-    irVersion: "1.1", project: { name, language, pattern: "pub-sub" }, messaging, socketOptions,
+    irVersion: "1.1", project, messaging, socketOptions,
     behavior: {
       portCount,
       cache: extensions.includes("last-value-caching"),
@@ -157,7 +157,7 @@ export function compilePubSub(config: AdvancedConfig, diagnostics: readonly Diag
       workerCount,
       ...(binaryStar && { binaryStarTransitions }),
     },
-    applications, dependencies: [{ id: libraryId, version: libraryVersion }], diagnostics,
+    applications, dependencies: projectDependencies(project), diagnostics,
   };
 }
 
@@ -168,7 +168,8 @@ export function validatePubSubPlan(plan: PubSubPlan): Diagnostic[] {
   });
   if (validation.ok && isAdvancedConfig(validation.value) && pattern === "pub-sub") {
     const expected = compilePubSub(validation.value, []);
-    if (JSON.stringify(plan.applications) === JSON.stringify(expected.applications) &&
+    if (plan.project.serialization === expected.project.serialization &&
+        JSON.stringify(plan.applications) === JSON.stringify(expected.applications) &&
         JSON.stringify(plan.behavior) === JSON.stringify(expected.behavior) &&
         plan.messaging.maxAgeMs === expected.messaging.maxAgeMs &&
         plan.messaging.subtree === expected.messaging.subtree) return [];

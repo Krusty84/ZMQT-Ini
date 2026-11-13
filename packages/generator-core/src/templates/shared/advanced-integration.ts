@@ -3,10 +3,13 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { cborLogPayload } from "./cbor";
+
 export function renderAdvancedIntegration(
   commands: Readonly<Record<string, readonly string[]>>,
   extensions: readonly string[],
   portCount: number,
+  cbor = false,
 ) {
   return String.raw`import contextlib
 import json
@@ -126,7 +129,7 @@ def main():
                     project.wait(restored, lambda event: event.get("event") == "REPLICA_SYNCED")
             else:
                 sub = apps["sub"]
-                project.wait(sub, lambda event: event.get("event") == "MESSAGE_RECEIVED")
+                project.wait(sub, lambda event: event.get("event") == "MESSAGE_RECEIVED"${cbor ? ` and event.get("payload") == ${cborLogPayload}` : ""})
                 if "black-box" in EXTENSIONS:
                     for worker in (1, 2):
                         project.wait(sub, lambda event: event.get("event") == "MESSAGE_RECEIVED" and

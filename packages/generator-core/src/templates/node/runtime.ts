@@ -5,12 +5,12 @@
 
 import { defaultReconnectIntervalMs, socketOptionDefinitions, socketOptionSchema } from "../../config/socket-options";
 
-const imports = String.raw`import { lookup } from "node:dns/promises";
+const imports = (cbor: boolean) => String.raw`import { lookup } from "node:dns/promises";
 import { readFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import { setImmediate, setTimeout } from "node:timers/promises";
 import zmq from "zeromq";
-import { decode } from "./message_codec.mjs";
+import { ${cbor ? "decodeJson, stringifyLog, telemetryPayload" : "decode"} } from "./message_codec.mjs";
 
 `;
 
@@ -99,13 +99,13 @@ function applySocketOptions(socket, values, activeOptions) {
 
 `;
 
-const singleSocketConfig = String.raw`async function loadConfig() {
+const singleSocketConfig = (cbor: boolean) => String.raw`async function loadConfig() {
   const args = process.argv.slice(2);
   if (args.length !== 0 && (args.length !== 2 || args[0] !== "--config")) {
     throw new Error("Expected --config PATH");
   }
   const configPath = args[1] ?? new URL("./config/zmq.json", import.meta.url);
-  const config = decode(await readFile(configPath));
+  const config = ${cbor ? "decodeJson" : "decode"}(await readFile(configPath));
   if (!hasKeys(config, ["bindHost", "connectHost", "port", "socketOptions"]) ||
       !boundedInt(config.port, 1, 65535)) {
     throw new Error("Invalid runtime configuration");
@@ -145,7 +145,7 @@ async function bind(socket, host, port) {
 
 `;
 
-const singleSocketRuntime = String.raw`class Runtime {
+const singleSocketRuntime = (cbor: boolean) => String.raw`class Runtime {
   stopping = false;
   runId = process.env.ZMQT_TEST_RUN_ID || null;
   sequence = 0;
@@ -156,7 +156,7 @@ const singleSocketRuntime = String.raw`class Runtime {
   }
 
   examplePayload(includeTestRunId) {
-    const payload = { value: 42 };
+    const payload = ${cbor ? "telemetryPayload()" : "{ value: 42 }"};
     if (includeTestRunId && this.runId !== null) payload.runId = this.runId;
     return payload;
   }
@@ -166,7 +166,7 @@ const singleSocketRuntime = String.raw`class Runtime {
     if (event === "MESSAGE_RECEIVED" && typeof data.payload?.runId === "string") {
       entry.runId = data.payload.runId;
     }
-    console.log(JSON.stringify(entry));
+    console.log(${cbor ? "stringifyLog" : "JSON.stringify"}(entry));
   }
 
   async transfer(operation) {
@@ -258,15 +258,15 @@ export async function run(socketType, mode, activeOptions, subscription, behavio
 }
 `;
 
-export const nodeRuntime =
-  imports +
+export const nodeRuntime = (cbor: boolean) =>
+  imports(cbor) +
   singleSocketTypes +
   validation +
-  singleSocketConfig +
+  singleSocketConfig(cbor) +
   endpoints +
-  singleSocketRuntime;
+  singleSocketRuntime(cbor);
 
-export const nodeAdvancedBase =
-  imports +
+export const nodeAdvancedBase = (cbor: boolean) =>
+  imports(cbor) +
   validation +
   endpoints;

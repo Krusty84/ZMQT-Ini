@@ -18,6 +18,7 @@ export function inspectProject(input: unknown): CoreResult<ProjectSummary> {
       projectName: project.name,
       language: project.language,
       pattern: project.pattern,
+      ...(project.serialization && { serialization: project.serialization }),
       ...(plan.irVersion === "1.1" && { extensions: plan.messaging.extensions }),
       roles: plan.irVersion === "1.0"
         ? plan.topology.roles.map(({ role, socketType, endpoint }) => ({

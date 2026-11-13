@@ -31,6 +31,7 @@ export interface CapabilityCatalog {
     bindRoles: readonly string[];
   }[];
   transports: readonly ["tcp"];
+  serializations: readonly ["json", "cbor"];
   socketOptionRanges: Readonly<Record<string, { min: number; max: number }>>;
   pubSubExtensions: {
     configSchemaVersion: ConfigSchemaVersion;
@@ -67,6 +68,7 @@ export interface BasicConfig {
   };
   messaging: {
     pattern: Pattern;
+    serialization?: "json" | "cbor";
     transport: "tcp";
     bindRole: string;
     bindHost: string;
@@ -115,6 +117,7 @@ interface ManifestFields {
   configSchemaVersion: ConfigSchemaVersion;
   language: Language;
   pattern: Pattern;
+  serialization?: "cbor";
   templateVersion: string;
   dependencySetVersion: string;
 }
@@ -133,6 +136,7 @@ export interface ProjectSummary {
   projectName: string;
   language: Language;
   pattern: Pattern;
+  serialization?: "cbor";
   extensions?: readonly PubSubExtension[];
   roles: readonly {
     role: string;
