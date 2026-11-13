@@ -61,6 +61,8 @@ node apps/cli/index.cjs ./config.json ./out
 
 The CLI prints a project summary to standard output and sends errors and warnings to standard error. Scripts that parse JSON must pass `--json` before the configuration and output paths.
 
+Try the four [Python labs](examples/python/README.md) for CBOR requests, JSON tasks, cached publications, and Binary Star failover.
+
 ### Select advanced PUB/SUB patterns
 
 Replace the `messaging` object in `config.json` with the example below to enable tracing and caching on a PUB/SUB proxy.

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "2.0",
+  "project": {
+    "name": "python-req-rep-cbor",
+    "language": "python"
+  },
+  "messaging": {
+    "pattern": "req-rep",
+    "transport": "tcp",
+    "bindRole": "rep",
+    "bindHost": "127.0.0.1",
+    "connectHost": "127.0.0.1",
+    "port": 5556,
+    "serialization": "cbor"
+  },
+  "socketOptions": {
+    "sendHwm": 50,
+    "receiveHwm": 50,
+    "sendTimeoutMs": 2500,
+    "receiveTimeoutMs": 2000,
+    "lingerMs": 25,
+    "reconnectIntervalMs": 200,
+    "reconnectMaxIntervalMs": 1500,
+    "heartbeatIntervalMs": 1000,
+    "heartbeatTimeoutMs": 4000,
+    "maxFrameBytes": 4096,
+    "handshakeTimeoutMs": 1000,
+    "immediate": true
+  }
+}

@@ -26,6 +26,7 @@ const {
 } = require("../generated-project-ci/project.cjs");
 
 const cli = resolve(__dirname, "../../apps/cli/index.cjs");
+const pythonExamples = resolve(__dirname, "../../examples/python");
 
 function setup(t, config) {
   const cwd = realpathSync(mkdtempSync(join(tmpdir(), "zmqt-parity-")));
@@ -165,6 +166,35 @@ for (const [label, pattern, bindRole, serialization] of [
     assert.deepEqual(await response.json(), direct);
   });
 }
+
+for (const name of ["req-rep-cbor", "push-pull-json", "pub-sub-cache-cbor", "clone-binary-star"]) {
+  test(`CLI generates the Python example ${name}`, (t) => {
+    const input = join(pythonExamples, `${name}.json`);
+    const config = JSON.parse(readFileSync(input, "utf8"));
+    const { cwd, output } = setup(t, config);
+    const result = runJsonCli({ cwd, input, output });
+    assert.equal(result.status, 0, result.stderr);
+    const { manifest } = JSON.parse(result.stdout);
+    assert.equal(manifest.language, "python");
+    assert.equal(manifest.pattern, config.messaging.pattern);
+    assert.equal(manifest.serialization, config.messaging.serialization === "cbor" ? "cbor" : undefined);
+    assert.deepEqual(manifest.extensions, config.messaging.extensions?.toSorted());
+    const runtime = JSON.parse(readFileSync(join(output, "config/zmq.json"), "utf8"));
+    assert.equal(runtime.port, config.messaging.port);
+    assert.deepEqual(runtime.backup, config.messaging.backup);
+    assert.ok(existsSync(join(output, "tests/integration_test.py")));
+  });
+}
+
+test("CLI rejects overlapping port ranges in the Python Binary Star example", (t) => {
+  const config = JSON.parse(readFileSync(join(pythonExamples, "clone-binary-star.json"), "utf8"));
+  config.messaging.backup.port = config.messaging.port + 3;
+  const workspace = setup(t, config);
+  const result = runJsonCli(workspace);
+  assert.equal(result.status, 1, result.stderr);
+  assert.ok(JSON.parse(result.stderr).diagnostics.some(({ code }) => code === "OVERLAPPING_PORT_RANGES"));
+  assert.equal(existsSync(workspace.output), false);
+});
 
 test("Core, CLI and Web reject the same incompatible PUB/SUB extensions", async (t) => {
   const config = projectConfig("node", "pub-sub", "server");
